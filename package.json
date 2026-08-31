@@ -1,0 +1,25 @@
+{
+  "name": "chatbot-saas",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "db:push": "pnpm --filter @chatbot/server prisma db push",
+    "db:migrate": "pnpm --filter @chatbot/server prisma migrate dev",
+    "db:seed": "pnpm --filter @chatbot/server prisma db seed",
+    "db:studio": "pnpm --filter @chatbot/server prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.5"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "server"
+  ]
+}

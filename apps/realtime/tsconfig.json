@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "./dist",
+    "noEmit": true,
+    "paths": {
+      "@chatbot/shared-types": ["../../packages/shared-types/src/index.ts"]
+    }
+  },
+  "include": ["src", "../../packages/shared-types/src"]
+}
