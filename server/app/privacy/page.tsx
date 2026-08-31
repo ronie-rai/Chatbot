@@ -1,3 +1,4 @@
+import React from "react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -5,7 +6,7 @@ export const metadata: Metadata = {
   description: "How Chatbot AI collects, stores, and uses your data.",
 };
 
-export default function PrivacyPage() {
+export default function PrivacyPage(): React.ReactElement {
   const date = "31 August 2026";
 
   return (

@@ -6,7 +6,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --dir app --dir lib",
     "type-check": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -15,12 +15,12 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.122.0",
     "@auth/prisma-adapter": "^2.11.3",
     "@chatbot/shared-types": "workspace:*",
     "@prisma/client": "^5.14.0",
     "bcryptjs": "^2.4.3",
     "googleapis": "^176.0.0",
+    "groq-sdk": "^1.6.0",
     "jose": "^6.2.10",
     "next": "^14.2.5",
     "next-auth": "5.0.0-beta.32",

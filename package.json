@@ -8,10 +8,10 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
-    "db:push": "pnpm --filter @chatbot/server prisma db push",
-    "db:migrate": "pnpm --filter @chatbot/server prisma migrate dev",
-    "db:seed": "pnpm --filter @chatbot/server prisma db seed",
-    "db:studio": "pnpm --filter @chatbot/server prisma studio"
+    "db:push": "pnpm --filter @chatbot/server prisma:push",
+    "db:migrate": "pnpm --filter @chatbot/server prisma:migrate",
+    "db:seed": "pnpm --filter @chatbot/server prisma:seed",
+    "db:studio": "pnpm --filter @chatbot/server prisma:studio"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

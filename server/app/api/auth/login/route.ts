@@ -16,11 +16,20 @@ const JWT_SECRET = new TextEncoder().encode(
  */
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const body = await request.json();
-    const { email, password, tenantSlug } = body as {
-      email: string;
-      password: string;
-      tenantSlug: string;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: { code: "INVALID_JSON", message: "Invalid or empty JSON body" } },
+        { status: 400 }
+      );
+    }
+
+    const { email, password, tenantSlug } = (body ?? {}) as {
+      email?: string;
+      password?: string;
+      tenantSlug?: string;
     };
 
     if (!email || !password || !tenantSlug) {

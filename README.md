@@ -12,7 +12,6 @@ A cross-platform SaaS chat application styled after WhatsApp, backed by an AI as
 ├── packages/
 │   └── shared-types/    → Shared TypeScript types (Message, Conversation, etc.)
 ├── server/              → Next.js App Router + Prisma + AI integration
-├── docker-compose.yml   → Local PostgreSQL database
 └── turbo.json           → Turborepo pipeline
 ```
 
@@ -23,8 +22,8 @@ A cross-platform SaaS chat application styled after WhatsApp, backed by an AI as
 | Mobile | Expo React Native (TypeScript) |
 | API Server | Next.js 14 App Router |
 | Real-time | Socket.io (self-hosted) |
-| Database | PostgreSQL 16 + Prisma ORM |
-| AI | Claude (Anthropic) with tool-calling |
+| Database | PostgreSQL + Prisma ORM |
+| AI | Groq (Llama 3.3 70B / 8B) with tool-calling |
 | Sheets | Google Sheets API (service account) |
 | Monorepo | Turborepo + pnpm workspaces |
 
@@ -35,7 +34,7 @@ A cross-platform SaaS chat application styled after WhatsApp, backed by an AI as
 - **Phase 2** — Chat UI Skeleton (WhatsApp-styled, mock data)
 - **Phase 3** — REST API for Messages
 - **Phase 4** — Real-Time, Room-Scoped Delivery (Socket.io)
-- **Phase 5** — AI Integration (Claude Messages API)
+- **Phase 5** — AI Integration (Groq Chat Completions API)
 - **Phase 6** — Tool Calling: Google Sheets Insert
 - **Phase 7** — Multi-Tenancy Hardening
 - **Phase 8** — Auth & Session
@@ -44,7 +43,7 @@ A cross-platform SaaS chat application styled after WhatsApp, backed by an AI as
 ## Quick Start
 
 ### Prerequisites
-- Docker Desktop (for PostgreSQL)
+- PostgreSQL database (Local installation, Supabase, Neon, or Railway)
 - Node.js 18+
 - pnpm 9+
 - Expo Go app on Android device (or Android emulator)
@@ -69,22 +68,17 @@ cp apps/realtime/.env.example apps/realtime/.env
 ```
 
 Edit `server/.env` and fill in:
-- `DATABASE_URL` (default matches docker-compose)
-- `CLAUDE_API_KEY` (from [console.anthropic.com](https://console.anthropic.com))
+- `DATABASE_URL` (PostgreSQL connection string)
+- `GROQ_API_KEY` (from [console.groq.com/keys](https://console.groq.com/keys))
 - Other values as needed
 
-### 3. Start the Database
-```bash
-docker compose up -d
-```
-
-### 4. Set Up Prisma
+### 3. Set Up Prisma
 ```bash
 pnpm db:push       # Push schema to DB
 pnpm db:seed       # Seed initial data (Phase 1+)
 ```
 
-### 5. Start Development Servers
+### 4. Start Development Servers
 ```bash
 # Start all apps in parallel
 pnpm dev
@@ -102,7 +96,7 @@ cd apps/realtime && pnpm dev
 cd apps/mobile && pnpm dev
 ```
 
-### 6. Verify
+### 5. Verify
 - API health: http://localhost:3000/api/health
 - Realtime health: http://localhost:4000/health
 - Scan the Expo QR code with Expo Go
@@ -113,8 +107,8 @@ cd apps/mobile && pnpm dev
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `CLAUDE_API_KEY` | Anthropic API key |
-| `CLAUDE_MODEL` | Claude model (e.g. `claude-3-5-sonnet-20241022`) |
+| `GROQ_API_KEY` | Groq API key |
+| `GROQ_MODEL` | Groq model (e.g. `llama-3.3-70b-versatile`) |
 | `GOOGLE_SERVICE_ACCOUNT_PATH` | Path to GCP service account JSON |
 | `REALTIME_SERVER_URL` | Internal URL of the Socket.io server |
 | `REALTIME_SECRET` | Shared secret between API and realtime servers |

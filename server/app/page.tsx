@@ -1,3 +1,5 @@
+import React from "react";
+
 export default function HomePage(): React.ReactElement {
   return (
     <main style={{ fontFamily: "sans-serif", padding: "2rem" }}>

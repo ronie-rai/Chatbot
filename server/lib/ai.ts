@@ -1,40 +1,46 @@
 /**
- * AI service — Claude integration with tool calling.
+ * AI service — Groq integration with tool calling.
  * Phase 5: Basic AI replies
  * Phase 6: insert_sheet_row tool + Google Sheets integration
+ *
+ * Uses Groq's OpenAI-compatible Chat Completions API.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { google } from "googleapis";
 import { prisma } from "./prisma";
-import type { Message } from "@chatbot/shared-types";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY,
+// ─── Client ───────────────────────────────────────────────────────────────────
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
-const MODEL = process.env.CLAUDE_MODEL ?? "claude-3-5-sonnet-20241022";
+const MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 
-// ─── Tool Schema ──────────────────────────────────────────────────────────────
+// ─── Tool Schema (OpenAI function-calling format) ─────────────────────────────
 
-const INSERT_SHEET_ROW_TOOL: Anthropic.Tool = {
-  name: "insert_sheet_row",
-  description:
-    "Extract important customer information from the conversation and insert it as a new row in the tenant's Google Sheet. Use this whenever a customer clearly provides contact details or makes a specific service request.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      columns: {
-        type: "object",
-        description: "Key-value pairs where keys are the column names and values are the extracted data",
-        additionalProperties: { type: "string" },
+const INSERT_SHEET_ROW_TOOL: Groq.Chat.Completions.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "insert_sheet_row",
+    description:
+      "Extract important customer information from the conversation and insert it as a new row in the tenant's Google Sheet. Use this whenever a customer clearly provides contact details or makes a specific service request.",
+    parameters: {
+      type: "object",
+      properties: {
+        columns: {
+          type: "object",
+          description: "Key-value pairs where keys are the column names and values are the extracted data",
+          additionalProperties: { type: "string" },
+        },
+        rawMessage: {
+          type: "string",
+          description: "The original customer message that triggered the extraction",
+        },
       },
-      rawMessage: {
-        type: "string",
-        description: "The original customer message that triggered the extraction",
-      },
+      required: ["columns", "rawMessage"],
     },
-    required: ["columns", "rawMessage"],
   },
 };
 
@@ -143,32 +149,38 @@ export async function runAITurn(
     required: boolean;
   }>;
 
-  // 3. Build Claude message history
-  const claudeMessages: Anthropic.MessageParam[] = history
-    .filter((m) => m.kind !== "SYSTEM")
-    .map((m) => ({
-      role: m.sender?.role === "BOT" ? ("assistant" as const) : ("user" as const),
-      content: m.body,
-    }));
+  // 3. Build Groq message history (OpenAI format)
+  const messages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: "system", content: buildSystemPrompt(columnDefs) },
+    ...history
+      .filter((m) => m.kind !== "SYSTEM")
+      .map((m) => ({
+        role: (m.sender?.role === "BOT" ? "assistant" : "user") as "assistant" | "user",
+        content: m.body,
+      })),
+    { role: "user", content: newUserMessage },
+  ];
 
-  // Add the new user message
-  claudeMessages.push({ role: "user", content: newUserMessage });
-
-  // 4. First Claude call
-  const response = await anthropic.messages.create({
+  // 4. First Groq call
+  const response = await groq.chat.completions.create({
     model: MODEL,
     max_tokens: 1024,
-    system: buildSystemPrompt(columnDefs),
-    tools: sheetConn ? [INSERT_SHEET_ROW_TOOL] : [],
-    messages: claudeMessages,
+    tools: sheetConn ? [INSERT_SHEET_ROW_TOOL] : undefined,
+    tool_choice: sheetConn ? "auto" : undefined,
+    messages,
   });
 
-  // 5. Handle tool use
-  if (response.stop_reason === "tool_use") {
-    const toolUseBlock = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+  const choice = response.choices[0];
 
-    if (toolUseBlock && toolUseBlock.name === "insert_sheet_row" && sheetConn) {
-      const input = toolUseBlock.input as { columns: Record<string, string>; rawMessage: string };
+  // 5. Handle tool call
+  if (choice.finish_reason === "tool_calls" && choice.message.tool_calls?.length) {
+    const toolCall = choice.message.tool_calls[0];
+
+    if (toolCall.function.name === "insert_sheet_row" && sheetConn) {
+      const input = JSON.parse(toolCall.function.arguments) as {
+        columns: Record<string, string>;
+        rawMessage: string;
+      };
 
       let sheetInserted = false;
       let toolResultContent = "";
@@ -193,42 +205,28 @@ export async function runAITurn(
         });
       }
 
-      // 6. Second Claude call with tool result
-      const followUp = await anthropic.messages.create({
+      // 6. Second Groq call with tool result
+      const followUp = await groq.chat.completions.create({
         model: MODEL,
         max_tokens: 512,
-        system: buildSystemPrompt(columnDefs),
         tools: [INSERT_SHEET_ROW_TOOL],
         messages: [
-          ...claudeMessages,
-          { role: "assistant", content: response.content },
+          ...messages,
+          choice.message, // assistant turn with tool_calls
           {
-            role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: toolUseBlock.id,
-                content: toolResultContent,
-              },
-            ],
+            role: "tool" as const,
+            tool_call_id: toolCall.id,
+            content: toolResultContent,
           },
         ],
       });
 
-      const finalText = followUp.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("\n");
-
-      return { reply: finalText, sheetInserted, toolCallId: toolUseBlock.id };
+      const finalText = followUp.choices[0]?.message.content ?? "";
+      return { reply: finalText, sheetInserted, toolCallId: toolCall.id };
     }
   }
 
   // 6b. No tool use — plain text reply
-  const textContent = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-
+  const textContent = choice.message.content ?? "";
   return { reply: textContent, sheetInserted: false };
 }
