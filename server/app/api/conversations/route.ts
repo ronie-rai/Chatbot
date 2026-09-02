@@ -92,3 +92,108 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
   }
 }
+
+/**
+ * POST /api/conversations
+ * Creates a new conversation with participants (and bot if AI kind).
+ */
+export async function POST(request: Request): Promise<NextResponse> {
+  try {
+    const body = await request.json();
+    const {
+      name,
+      creatorId,
+      kind = "ai",
+      tenantId: requestedTenantId,
+    } = body as {
+      name?: string;
+      creatorId?: string;
+      kind?: "ai" | "direct" | "group";
+      tenantId?: string;
+    };
+
+    if (!creatorId) {
+      return NextResponse.json(
+        { ok: false, error: { code: "MISSING_CREATOR", message: "creatorId is required" } },
+        { status: 400 }
+      );
+    }
+
+    // Resolve tenantId from creator if not provided
+    let tenantId = requestedTenantId;
+    if (!tenantId) {
+      const creator = await prisma.user.findUnique({ where: { id: creatorId } });
+      if (!creator) {
+        return NextResponse.json(
+          { ok: false, error: { code: "USER_NOT_FOUND", message: "Creator user not found" } },
+          { status: 404 }
+        );
+      }
+      tenantId = creator.tenantId;
+    }
+
+    const conversationKind = (kind || "ai").toUpperCase() as "AI" | "DIRECT" | "GROUP";
+
+    // Find bot user in this tenant for AI chats
+    let botUser: { id: string; name: string; avatarUrl: string | null; role: string } | null = null;
+    if (conversationKind === "AI") {
+      botUser = await prisma.user.findFirst({
+        where: { tenantId, role: "BOT" },
+        select: { id: true, name: true, avatarUrl: true, role: true },
+      });
+    }
+
+    // Create conversation and participants
+    const conversation = await prisma.conversation.create({
+      data: {
+        tenantId,
+        name: name?.trim() || "New Chat",
+        kind: conversationKind,
+        participants: {
+          create: [
+            { userId: creatorId },
+            ...(botUser ? [{ userId: botUser.id }] : []),
+          ],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: { select: { id: true, name: true, avatarUrl: true, role: true } },
+          },
+        },
+      },
+    });
+
+    const shaped = {
+      id: conversation.id,
+      tenantId: conversation.tenantId,
+      name: conversation.name,
+      kind: conversation.kind.toLowerCase(),
+      createdAt: conversation.createdAt.toISOString(),
+      updatedAt: conversation.updatedAt.toISOString(),
+      participants: conversation.participants.map((p) => ({
+        id: p.id,
+        conversationId: p.conversationId,
+        userId: p.userId,
+        joinedAt: p.joinedAt.toISOString(),
+        user: p.user
+          ? {
+              id: p.user.id,
+              name: p.user.name,
+              avatarUrl: p.user.avatarUrl ?? undefined,
+              role: p.user.role.toLowerCase(),
+            }
+          : undefined,
+      })),
+    };
+
+    return NextResponse.json({ ok: true, data: shaped }, { status: 201 });
+  } catch (error) {
+    console.error("[POST /api/conversations]", error);
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
+      { status: 500 }
+    );
+  }
+}

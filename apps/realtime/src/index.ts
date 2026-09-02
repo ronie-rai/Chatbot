@@ -9,10 +9,13 @@
 
 import { createServer } from "http";
 import { Server } from "socket.io";
+import dotenv from "dotenv";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
 } from "@chatbot/shared-types";
+
+dotenv.config();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:8081").split(",");

@@ -11,6 +11,11 @@ function shapeMessage(m: {
   body: string;
   kind: string;
   status: string;
+  mediaUrl?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  mimeType?: string | null;
+  duration?: number | null;
   metadata: unknown;
   createdAt: Date;
   sender?: { id: string; name: string; avatarUrl: string | null; role: string } | null;
@@ -28,8 +33,13 @@ function shapeMessage(m: {
         }
       : undefined,
     body: m.body,
-    kind: m.kind.toLowerCase() as "text" | "tool_result" | "system",
+    kind: m.kind.toLowerCase() as "text" | "image" | "audio" | "document" | "tool_result" | "system",
     status: m.status.toLowerCase() as "sending" | "sent" | "delivered" | "read" | "failed",
+    mediaUrl: m.mediaUrl ?? undefined,
+    fileName: m.fileName ?? undefined,
+    fileSize: m.fileSize ?? undefined,
+    mimeType: m.mimeType ?? undefined,
+    duration: m.duration ?? undefined,
     metadata: (m.metadata ?? undefined) as Record<string, unknown> | undefined,
     createdAt: m.createdAt.toISOString(),
   };
@@ -88,11 +98,32 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const body = await request.json();
-    const { senderId, text } = body as { senderId: string; text: string };
+    const {
+      senderId,
+      text,
+      kind = "text",
+      mediaUrl,
+      fileName,
+      fileSize,
+      mimeType,
+      duration,
+      metadata,
+    } = body as {
+      senderId: string;
+      text?: string;
+      kind?: "text" | "image" | "audio" | "document" | "tool_result" | "system";
+      mediaUrl?: string;
+      fileName?: string;
+      fileSize?: number;
+      mimeType?: string;
+      duration?: number;
+      metadata?: Record<string, unknown>;
+    };
 
-    if (!senderId || !text?.trim()) {
+    const trimmedText = text?.trim() || "";
+    if (!senderId || (!trimmedText && !mediaUrl)) {
       return NextResponse.json(
-        { ok: false, error: { code: "MISSING_FIELDS", message: "senderId and text are required" } },
+        { ok: false, error: { code: "MISSING_FIELDS", message: "senderId and either text or mediaUrl are required" } },
         { status: 400 }
       );
     }
@@ -118,14 +149,36 @@ export async function POST(
       );
     }
 
+    const effectiveKind = (kind || "text").toUpperCase() as
+      | "TEXT"
+      | "IMAGE"
+      | "AUDIO"
+      | "DOCUMENT"
+      | "TOOL_RESULT"
+      | "SYSTEM";
+
+    const effectiveBody =
+      trimmedText ||
+      (effectiveKind === "AUDIO"
+        ? `Voice message${duration ? ` (${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, "0")})` : ""}`
+        : effectiveKind === "IMAGE"
+        ? "Photo"
+        : fileName || "[Attachment]");
+
     // 1. Persist user message
     const userMessage = await prisma.message.create({
       data: {
         conversationId: params.id,
         senderId,
-        body: text.trim(),
-        kind: "TEXT",
+        body: effectiveBody,
+        kind: effectiveKind,
         status: "SENT",
+        mediaUrl: mediaUrl || null,
+        fileName: fileName || null,
+        fileSize: fileSize || null,
+        mimeType: mimeType || null,
+        duration: duration || null,
+        metadata: metadata ? (metadata as any) : undefined,
       },
       include: { sender: { select: { id: true, name: true, avatarUrl: true, role: true } } },
     });
@@ -142,7 +195,7 @@ export async function POST(
     broadcastMessage(params.id, shapedUserMsg).catch(() => {});
 
     // 3. Trigger AI turn (non-blocking — don't make client wait)
-    triggerAIReply(params.id, conversation.tenantId, text.trim()).catch((err) => {
+    triggerAIReply(params.id, conversation.tenantId, effectiveBody).catch((err) => {
       console.error("[AI turn failed]", err);
     });
 

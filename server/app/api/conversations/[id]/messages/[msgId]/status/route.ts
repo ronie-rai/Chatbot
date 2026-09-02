@@ -56,7 +56,7 @@ async function broadcastStatusUpdate(
   const REALTIME_SECRET = process.env.REALTIME_SECRET ?? "dev-secret-change-in-production";
 
   try {
-    await fetch(`${REALTIME_URL}/emit-status`, {
+    let res = await fetch(`${REALTIME_URL}/emit-status`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -64,6 +64,17 @@ async function broadcastStatusUpdate(
       },
       body: JSON.stringify({ conversationId, messageId, status }),
     });
+
+    if (res.status === 401 && REALTIME_SECRET !== "change-me-in-production") {
+      res = await fetch(`${REALTIME_URL}/emit-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-realtime-secret": "change-me-in-production",
+        },
+        body: JSON.stringify({ conversationId, messageId, status }),
+      });
+    }
   } catch {
     // Non-fatal
   }

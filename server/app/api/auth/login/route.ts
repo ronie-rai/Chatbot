@@ -39,18 +39,34 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // Resolve tenant
-    const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+    // Resolve tenant with flexible slug matching
+    const cleanSlug = tenantSlug.trim();
+    let tenant = await prisma.tenant.findFirst({
+      where: {
+        OR: [
+          { slug: cleanSlug },
+          { slug: cleanSlug.toLowerCase() },
+          { slug: cleanSlug.replace(/_/g, "-").toLowerCase() },
+          { slug: cleanSlug.replace(/-/g, "_") },
+          { name: cleanSlug },
+        ],
+      },
+    });
+
     if (!tenant) {
       return NextResponse.json(
-        { ok: false, error: { code: "INVALID_TENANT", message: "Tenant not found" } },
+        { ok: false, error: { code: "INVALID_TENANT", message: `Organization "${tenantSlug}" not found. Please register or create it.` } },
         { status: 401 }
       );
     }
 
     // Find user (scoped to tenant)
-    const user = await prisma.user.findUnique({
-      where: { tenantId_email: { tenantId: tenant.id, email } },
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await prisma.user.findFirst({
+      where: {
+        tenantId: tenant.id,
+        email: cleanEmail,
+      },
     });
 
     if (!user || !user.passwordHash) {

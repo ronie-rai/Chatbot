@@ -27,6 +27,9 @@ enum ConversationKind {
 
 enum MessageKind {
   TEXT
+  IMAGE
+  AUDIO
+  DOCUMENT
   TOOL_RESULT
   SYSTEM
 }
@@ -136,6 +139,11 @@ model Message {
   body           String        @db.Text
   kind           MessageKind   @default(TEXT)
   status         MessageStatus @default(SENT)
+  mediaUrl       String?
+  fileName       String?
+  fileSize       Int?
+  mimeType       String?
+  duration       Int?
   /// For TOOL_RESULT messages: extracted data, tool call ids, etc.
   metadata       Json?
   createdAt      DateTime      @default(now())
@@ -169,4 +177,15 @@ model SheetConnection {
 
   @@index([tenantId])
   @@map("sheet_connections")
+}
+
+// ─── SystemSetting ───────────────────────────────────────────────────────────
+
+/// Global system configuration shared across all tenants (e.g. shared AI API key).
+model SystemSetting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }

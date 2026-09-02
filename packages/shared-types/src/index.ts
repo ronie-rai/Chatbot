@@ -57,7 +57,7 @@ export interface Participant {
 // ─── Message ──────────────────────────────────────────────────────────────────
 
 export type MessageStatus = "sending" | "sent" | "delivered" | "read" | "failed";
-export type MessageKind = "text" | "tool_result" | "system";
+export type MessageKind = "text" | "image" | "audio" | "document" | "tool_result" | "system";
 
 export interface Message {
   id: string;
@@ -68,6 +68,11 @@ export interface Message {
   kind: MessageKind;
   status: MessageStatus;
   createdAt: string;
+  mediaUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  duration?: number;
   /** If kind === 'tool_result', this holds the extracted data */
   metadata?: Record<string, unknown>;
 }

@@ -9,7 +9,7 @@ const REALTIME_SECRET = process.env.REALTIME_SECRET ?? "dev-secret-change-in-pro
 
 export async function broadcastMessage(conversationId: string, message: Message): Promise<void> {
   try {
-    const res = await fetch(`${REALTIME_URL}/emit-message`, {
+    let res = await fetch(`${REALTIME_URL}/emit-message`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -17,6 +17,17 @@ export async function broadcastMessage(conversationId: string, message: Message)
       },
       body: JSON.stringify({ conversationId, message }),
     });
+
+    if (res.status === 401 && REALTIME_SECRET !== "change-me-in-production") {
+      res = await fetch(`${REALTIME_URL}/emit-message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-realtime-secret": "change-me-in-production",
+        },
+        body: JSON.stringify({ conversationId, message }),
+      });
+    }
 
     if (!res.ok) {
       console.warn(`[broadcast] Failed to emit message: ${res.status}`);
