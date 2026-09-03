@@ -53,6 +53,17 @@ Thumbs.db
 # Turbo
 .turbo
 
+# Android local build config (machine-specific)
+apps/mobile/android/local.properties
+apps/mobile/android/.gradle/
+apps/mobile/android/app/.cxx/
+apps/mobile/android/app/build/
+apps/mobile/android/build/
+
+# Mobile Expo generated
+apps/mobile/.expo/
+apps/mobile/.turbo/
+
 # Google credentials (never commit these!)
 *.json
 !package.json
