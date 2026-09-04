@@ -61,6 +61,8 @@ model Tenant {
   users           User[]
   conversations   Conversation[]
   sheetConnections SheetConnection[]
+  templates       ChatTemplate[]
+  submissions     TemplateSubmission[]
 
   @@map("tenants")
 }
@@ -98,6 +100,7 @@ model Conversation {
   /// Optional display name (required for GROUP; optional for DIRECT/AI)
   name      String?
   kind      ConversationKind @default(AI)
+  metadata  Json?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
@@ -105,6 +108,7 @@ model Conversation {
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   participants Participant[]
   messages     Message[]
+  submissions  TemplateSubmission[]
 
   @@index([tenantId])
   @@map("conversations")
@@ -188,4 +192,64 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// ─── ChatTemplate ─────────────────────────────────────────────────────────────
+
+/// Per-tenant slash command chat template mapped to a dedicated Google Sheet tab.
+model ChatTemplate {
+  id            String   @id @default(cuid())
+  tenantId      String
+  command       String   /// e.g. "booking", "membership", "trial" (lowercase, without slash)
+  name          String   /// e.g. "Facility & Court Booking"
+  description   String?  /// e.g. "Reserve sports courts and facilities"
+  sheetName     String   /// e.g. "Facility Bookings" (dedicated tab in Google Sheet)
+  icon          String?  @default("📋")
+  /// JSON array of field objects: [{ key, label, required, type, placeholder }]
+  fields        Json
+  /// Pre-configured template form or prompt shown to the user in chat
+  promptMessage String   @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  submissions TemplateSubmission[]
+
+  @@unique([tenantId, command])
+  @@index([tenantId])
+  @@map("chat_templates")
+}
+
+// ─── TemplateSubmission ───────────────────────────────────────────────────────
+
+/// Data logged into Google Sheets and synchronized in the PostgreSQL database.
+model TemplateSubmission {
+  id              String        @id @default(cuid())
+  tenantId        String
+  conversationId  String?
+  templateId      String?
+  templateCommand String        /// e.g. "booking", "membership", "ai_tool"
+  sheetName       String        /// Target Google Sheet tab name, e.g. "Facility Bookings"
+  submissionRef   String?       /// Unique ID, e.g. "SUB-LXZ123"
+  userName        String?
+  userPhone       String?
+  /// Key-value JSON pairs of extracted columns: { "Full Name": "...", "Sport": "..." }
+  data            Json
+  rawMessage      String?       @db.Text
+  status          String        @default("CONFIRMED")
+  syncedToSheet   Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  template     ChatTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([templateCommand])
+  @@index([sheetName])
+  @@index([submissionRef])
+  @@map("template_submissions")
 }

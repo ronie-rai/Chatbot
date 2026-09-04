@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   FlatList,
+  ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -427,6 +428,45 @@ export function ChatScreen({ route }: Props) {
         )}
       </View>
 
+      {/* Quick Sports Template Chips */}
+      <View style={styles.quickChipsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.quickChipsScroll}
+        >
+          {[
+            { label: "🏟️ /booking", cmd: "/booking" },
+            { label: "🏅 /membership", cmd: "/membership" },
+            { label: "⚡ /trial", cmd: "/trial" },
+            { label: "🏆 /tournament", cmd: "/tournament" },
+            { label: "🎽 /equipment", cmd: "/equipment" },
+            { label: "🏋️ /coaching", cmd: "/coaching" },
+            { label: "💬 /feedback", cmd: "/feedback" },
+            { label: "🤝 /sponsor", cmd: "/sponsor" },
+            { label: "📋 /templates", cmd: "/templates" },
+            ...(MOCK_CURRENT_USER.role === "admin"
+              ? [
+                  { label: "🛠️ /create", cmd: "/create ", isAdmin: true },
+                  { label: "✏️ /modify", cmd: "/modify ", isAdmin: true },
+                  { label: "🗑️ /delete", cmd: "/delete ", isAdmin: true },
+                ]
+              : []),
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.cmd}
+              style={[styles.quickChip, item.isAdmin && styles.quickChipAdmin]}
+              onPress={() => setInputText(item.cmd)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.quickChipText, item.isAdmin && styles.quickChipAdminText]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* WhatsApp Web Light-Theme Composer Bar */}
       <View style={styles.composer}>
         {isRecording ? (
@@ -562,6 +602,41 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 1,
+  },
+  quickChipsContainer: {
+    backgroundColor: "#F7F8FA",
+    borderTopWidth: 1,
+    borderTopColor: "#E9EDEF",
+    paddingVertical: 6,
+  },
+  quickChipsScroll: {
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  quickChip: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D1D7DB",
+    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+  },
+  quickChipAdmin: {
+    backgroundColor: "#FFF8E1",
+    borderColor: "#FFE082",
+  },
+  quickChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#111B21",
+  },
+  quickChipAdminText: {
+    color: "#E65100",
   },
   composer: {
     flexDirection: "row",

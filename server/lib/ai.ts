@@ -434,21 +434,81 @@ export async function runAITurn(
       const targetSheetName = input.sheetName?.trim() || sheetConn?.sheetName || "Bookings";
       let sheetInserted = false;
 
+      // Extract user info if present in columns
+      const userName =
+        input.columns["Name"] ||
+        input.columns["Full Name"] ||
+        input.columns["User Name"] ||
+        input.columns["Athlete Name"] ||
+        input.columns["Member Name"] ||
+        undefined;
+      const userPhone =
+        input.columns["Phone"] ||
+        input.columns["Phone Number"] ||
+        input.columns["Mobile"] ||
+        input.columns["Contact"] ||
+        input.columns["Contact Number"] ||
+        undefined;
+
+      const submissionRef = `AI-${Date.now().toString(36).toUpperCase()}`;
+
+      // Check if there is a matching template for this sheet
+      const matchingTemplate = await prisma.chatTemplate.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { sheetName: { equals: targetSheetName, mode: "insensitive" } },
+            { command: { equals: targetSheetName.toLowerCase(), mode: "insensitive" } },
+          ],
+        },
+      }).catch(() => null);
+
+      // 1. Dual save: Persist in PostgreSQL database first
+      let submissionRecord: any = null;
+      try {
+        submissionRecord = await prisma.templateSubmission.create({
+          data: {
+            tenantId,
+            conversationId,
+            templateId: matchingTemplate?.id || null,
+            templateCommand: matchingTemplate?.command || "ai_tool",
+            sheetName: targetSheetName,
+            submissionRef,
+            userName: userName || null,
+            userPhone: userPhone || null,
+            data: input.columns,
+            rawMessage: input.rawMessage || newUserMessage || null,
+            status: "CONFIRMED",
+            syncedToSheet: false,
+          },
+        });
+      } catch (dbErr) {
+        console.error("[ai] Failed to dual-persist submission in database:", dbErr);
+      }
+
       try {
         if (effectiveSpreadsheetId) {
-          await insertSheetRow(
+          const insertRes = await insertSheetRow(
             effectiveSpreadsheetId,
             targetSheetName,
             input.columns,
             input.rawMessage
           );
-          sheetInserted = true;
+          sheetInserted = insertRes.success;
+
+          // 2. Mark syncedToSheet in PostgreSQL upon successful Google Sheets insert
+          if (sheetInserted && submissionRecord) {
+            await prisma.templateSubmission.update({
+              where: { id: submissionRecord.id },
+              data: { syncedToSheet: true },
+            }).catch(() => {});
+          }
         } else {
-          console.log(`[sheets] Simulated insert into tab "${targetSheetName}".`);
+          console.log(`[sheets] Simulated insert into tab "${targetSheetName}". Persisted in database (ID: ${submissionRecord?.id}).`);
           sheetInserted = true;
         }
       } catch (err) {
-        console.error("[sheets] Insert failed:", err);
+        console.error("[sheets] Insert failed (persisted safely in database):", err);
       }
 
       // Generate instant, crisp confirmation directly from extracted data

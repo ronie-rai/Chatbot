@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { broadcastMessage } from "@/lib/broadcast";
 import { runAITurn } from "@/lib/ai";
+import {
+  handleSlashCommand,
+  handleActiveTemplateReply,
+} from "@/lib/templates";
 
 // Helper to shape a DB message into the API response format
 function shapeMessage(m: {
@@ -141,6 +145,7 @@ export async function POST(
 
     const participant = await prisma.participant.findUnique({
       where: { conversationId_userId: { conversationId: params.id, userId: senderId } },
+      include: { user: { select: { id: true, name: true, role: true } } },
     });
     if (!participant) {
       return NextResponse.json(
@@ -195,7 +200,7 @@ export async function POST(
     broadcastMessage(params.id, shapedUserMsg).catch(() => {});
 
     // 3. Trigger AI turn (non-blocking — don't make client wait)
-    triggerAIReply(params.id, conversation.tenantId, effectiveBody).catch((err) => {
+    triggerAIReply(params.id, conversation.tenantId, effectiveBody, participant.user).catch((err) => {
       console.error("[AI turn failed]", err);
     });
 
@@ -210,12 +215,13 @@ export async function POST(
 }
 
 /**
- * Runs AI turn in the background: get reply, persist bot message, broadcast.
+ * Runs AI turn or template command handling in the background: get reply, persist bot message, broadcast.
  */
 async function triggerAIReply(
   conversationId: string,
   tenantId: string,
-  userText: string
+  userText: string,
+  senderUser?: { id: string; name: string; role: string }
 ): Promise<void> {
   // Find the bot participant in this conversation
   const botParticipant = await prisma.participant.findFirst({
@@ -233,7 +239,85 @@ async function triggerAIReply(
 
   const botUser = botParticipant.user;
 
-  // Run AI (Claude) turn
+  // 1. Check if user issued a slash command (/booking, /membership, /create, /modify, /delete, /templates, /help)
+  if (userText.trim().startsWith("/")) {
+    const slashRes = await handleSlashCommand({
+      conversationId,
+      tenantId,
+      senderId: senderUser?.id || "",
+      senderRole: senderUser?.role || "USER",
+      senderName: senderUser?.name || "Member",
+      text: userText,
+    });
+
+    if (slashRes.handled && slashRes.reply) {
+      // If template opened, record active template in conversation metadata
+      if (slashRes.activeTemplate !== undefined) {
+        const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
+        const meta = (conv?.metadata as Record<string, any>) || {};
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { metadata: { ...meta, activeTemplate: slashRes.activeTemplate } },
+        });
+      }
+
+      const botMessage = await prisma.message.create({
+        data: {
+          conversationId,
+          senderId: botUser.id,
+          body: slashRes.reply,
+          kind: slashRes.kind === "tool_result" || slashRes.sheetInserted ? "TOOL_RESULT" : "TEXT",
+          status: "SENT",
+          metadata: slashRes.sheetName
+            ? { sheetName: slashRes.sheetName, sheetInserted: slashRes.sheetInserted }
+            : undefined,
+        },
+        include: { sender: { select: { id: true, name: true, avatarUrl: true, role: true } } },
+      });
+
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+      });
+
+      await broadcastMessage(conversationId, shapeMessage(botMessage));
+      return;
+    }
+  }
+
+  // 2. Check if user is replying to an active template form
+  const templateReplyRes = await handleActiveTemplateReply(
+    conversationId,
+    tenantId,
+    userText,
+    { name: senderUser?.name || "Member" }
+  );
+
+  if (templateReplyRes && templateReplyRes.handled && templateReplyRes.reply) {
+    const botMessage = await prisma.message.create({
+      data: {
+        conversationId,
+        senderId: botUser.id,
+        body: templateReplyRes.reply,
+        kind: "TOOL_RESULT",
+        status: "SENT",
+        metadata: templateReplyRes.sheetName
+          ? { sheetName: templateReplyRes.sheetName, sheetInserted: true }
+          : undefined,
+      },
+      include: { sender: { select: { id: true, name: true, avatarUrl: true, role: true } } },
+    });
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+
+    await broadcastMessage(conversationId, shapeMessage(botMessage));
+    return;
+  }
+
+  // 3. Fallback to standard Groq / AI Turn
   const { reply, sheetInserted, toolCallId } = await runAITurn(
     conversationId,
     tenantId,
@@ -264,3 +348,4 @@ async function triggerAIReply(
   // Broadcast bot reply to room
   await broadcastMessage(conversationId, shapeMessage(botMessage));
 }
+

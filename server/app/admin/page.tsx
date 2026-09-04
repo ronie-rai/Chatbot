@@ -113,6 +113,39 @@ interface AISettings {
   availableModels: string[];
 }
 
+interface TemplateItem {
+  id: string;
+  tenantId: string;
+  command: string;
+  name: string;
+  description: string | null;
+  sheetName: string;
+  icon: string | null;
+  fields: Array<{ key: string; label: string; required: boolean; type?: string; placeholder?: string }>;
+  promptMessage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SubmissionItem {
+  id: string;
+  submissionRef: string | null;
+  tenantId: string;
+  conversationId: string | null;
+  templateId: string | null;
+  templateCommand: string;
+  sheetName: string;
+  userName: string | null;
+  userPhone: string | null;
+  data: Record<string, any>;
+  rawMessage: string | null;
+  status: string;
+  syncedToSheet: boolean;
+  createdAt: string;
+  updatedAt: string;
+  template?: { name: string; command: string; icon: string | null } | null;
+}
+
 // --- Super Admin Login Gate ---
 
 function SuperAdminLogin({ onLogin }: { onLogin: () => void }) {
@@ -306,9 +339,34 @@ export default function SuperAdminPage() {
 // --- Admin Panel ---
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "orgs" | "groups" | "users" | "conversations" | "ai" | "audit" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "templates" | "orgs" | "groups" | "users" | "conversations" | "ai" | "audit" | "settings">("overview");
 
   const [overview, setOverview] = useState<OverviewStats | null>(null);
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [newTplCommand, setNewTplCommand] = useState("");
+  const [newTplName, setNewTplName] = useState("");
+  const [newTplDesc, setNewTplDesc] = useState("");
+  const [newTplSheetName, setNewTplSheetName] = useState("");
+  const [newTplIcon, setNewTplIcon] = useState("📋");
+  const [newTplFields, setNewTplFields] = useState<Array<{ key: string; label: string; required: boolean; type: string }>>([
+    { key: "full_name", label: "Full Name", required: true, type: "text" },
+    { key: "phone_number", label: "Phone Number", required: true, type: "phone" },
+    { key: "details", label: "Details / Notes", required: true, type: "text" },
+  ]);
+  const [seedingTemplates, setSeedingTemplates] = useState(false);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
+  const [submissionStats, setSubmissionStats] = useState<{ total: number; synced: number; pending: number }>({
+    total: 0,
+    synced: 0,
+    pending: 0,
+  });
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [submissionSearch, setSubmissionSearch] = useState("");
+
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
@@ -374,7 +432,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewRes, orgsRes, usersRes, groupsRes, convRes, healthRes, aiRes] = await Promise.all([
+      const [overviewRes, orgsRes, usersRes, groupsRes, convRes, healthRes, aiRes, templatesRes, submissionsRes] = await Promise.all([
         fetch("/api/admin/overview", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/organizations", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/users", { headers: authHeaders() }).then((r) => r.json()),
@@ -382,6 +440,8 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         fetch("/api/admin/conversations", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/system-health", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/ai-settings", { headers: authHeaders() }).then((r) => r.json()),
+        fetch("/api/admin/templates", { headers: authHeaders() }).then((r) => r.json()),
+        fetch("/api/admin/submissions", { headers: authHeaders() }).then((r) => r.json()).catch(() => ({ ok: false })),
       ]);
 
       if (overviewRes.ok) setOverview(overviewRes.data);
@@ -401,6 +461,15 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         setSelectedAiModel(aiRes.data.model);
         setSystemPromptInput(aiRes.data.systemPrompt);
       }
+      if (templatesRes.ok && Array.isArray(templatesRes.data)) {
+        setTemplates(templatesRes.data);
+      }
+      if (submissionsRes?.ok && submissionsRes.data) {
+        setSubmissions(submissionsRes.data.submissions || []);
+        if (submissionsRes.data.stats) {
+          setSubmissionStats(submissionsRes.data.stats);
+        }
+      }
     } catch {
       showToast("error", "Failed to connect to backend server");
     } finally {
@@ -408,6 +477,129 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTplCommand.trim() || !newTplName.trim()) return;
+    setCreatingTemplate(true);
+    try {
+      const res = await fetch("/api/admin/templates", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          command: newTplCommand.trim(),
+          name: newTplName.trim(),
+          description: newTplDesc.trim() || undefined,
+          sheetName: newTplSheetName.trim() || `${newTplName.trim()} Records`,
+          icon: newTplIcon.trim() || "📋",
+          fields: newTplFields.filter((f) => f.label.trim().length > 0),
+          autoCreateSheet: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", `Template "/${newTplCommand}" & Google Sheet tab created!`);
+        setShowTemplateModal(false);
+        setNewTplCommand("");
+        setNewTplName("");
+        setNewTplDesc("");
+        setNewTplSheetName("");
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Failed to create template");
+      }
+    } catch {
+      showToast("error", "Request failed");
+    } finally {
+      setCreatingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (command: string, sheetName: string) => {
+    if (!window.confirm(`Are you sure you want to delete template "/${command}"?\n\n🛡️ NOTE: All existing Google Sheet tabs ("${sheetName}") and submitted data will remain preserved!`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/templates?command=${encodeURIComponent(command)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", `Template "/${command}" deleted. Google Sheet data was preserved.`);
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Failed to delete template");
+      }
+    } catch {
+      showToast("error", "Request failed");
+    }
+  };
+
+  const handleSeedSportsTemplates = async () => {
+    setSeedingTemplates(true);
+    try {
+      const res = await fetch("/api/admin/templates/seed", {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", data.data?.message || "Seeded 8 Sports Foundation templates & sheets!");
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Failed to seed templates");
+      }
+    } catch {
+      showToast("error", "Request failed");
+    } finally {
+      setSeedingTemplates(false);
+    }
+  };
+
+  const handleSyncOneSubmission = async (subId: string) => {
+    setSyncingId(subId);
+    try {
+      const res = await fetch("/api/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "sync_one", submissionId: subId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", "Successfully synced record to Google Sheets!");
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Sync failed");
+      }
+    } catch {
+      showToast("error", "Failed to sync to Google Sheets");
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const handleSyncAllSubmissions = async () => {
+    setSyncingAll(true);
+    try {
+      const res = await fetch("/api/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "sync_all" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", data.data?.message || "All records synced to Google Sheets!");
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Batch sync failed");
+      }
+    } catch {
+      showToast("error", "Failed to batch sync");
+    } finally {
+      setSyncingAll(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -691,8 +883,23 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       (c.lastMessage?.body && c.lastMessage.body.toLowerCase().includes(convSearch.toLowerCase()))
   );
 
+  const filteredSubmissions = submissions.filter((sub) => {
+    const q = submissionSearch.toLowerCase();
+    if (!q) return true;
+    return (
+      (sub.submissionRef && sub.submissionRef.toLowerCase().includes(q)) ||
+      (sub.userName && sub.userName.toLowerCase().includes(q)) ||
+      (sub.userPhone && sub.userPhone.toLowerCase().includes(q)) ||
+      sub.templateCommand.toLowerCase().includes(q) ||
+      sub.sheetName.toLowerCase().includes(q) ||
+      (sub.rawMessage && sub.rawMessage.toLowerCase().includes(q)) ||
+      Object.values(sub.data || {}).some((v) => String(v).toLowerCase().includes(q))
+    );
+  });
+
   const tabs: Array<{ key: typeof activeTab; label: string }> = [
     { key: "overview", label: "Overview" },
+    { key: "templates", label: `Templates & Submissions (${templates.length})` },
     { key: "orgs", label: `Organizations (${orgs.length})` },
     { key: "groups", label: `Groups (${groups.length})` },
     { key: "users", label: `Users (${users.length})` },
@@ -807,10 +1014,11 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
                 <div style={s.quickActionsRow}>
                   {[
+                    { label: "📋 Chat Templates", fn: () => setActiveTab("templates"), color: "#00796B" },
                     { label: "+ New Organization", fn: () => setShowOrgModal(true), color: "#00A884" },
                     { label: "+ Add User", fn: () => setShowUserModal(true), color: "#1565C0" },
                     { label: "+ Create Group", fn: () => setShowGroupModal(true), color: "#6A1B9A" },
-                    { label: "View Chats & Leads", fn: () => setActiveTab("conversations"), color: "#00796B" },
+                    { label: "View Chats & Leads", fn: () => setActiveTab("conversations"), color: "#2E7D32" },
                     { label: "Configure AI", fn: () => setActiveTab("ai"), color: "#E65100" },
                     { label: "Refresh Data", fn: fetchData, color: "#37474F" },
                   ].map((q) => (
@@ -860,6 +1068,330 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* TEMPLATES TAB */}
+            {activeTab === "templates" && (
+              <div>
+                <div style={s.card}>
+                  <div style={{ ...s.cardHeader, flexWrap: "wrap", gap: 12 }}>
+                    <div>
+                      <h2 style={s.cardTitle}>Chat Templates &amp; Multi-Sheet Automation</h2>
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "#667781" }}>
+                        Every template generates its own dedicated tab inside your connected Google Spreadsheet. Users invoke templates with <code>/&lt;command&gt;</code> in chat.
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        style={{ ...s.btnSecondary, background: "#E8F5E9", color: "#2E7D32", borderColor: "#A5D6A7", fontWeight: 700 }}
+                        onClick={handleSeedSportsTemplates}
+                        disabled={seedingTemplates}
+                      >
+                        {seedingTemplates ? "⚡ Generating Sheets..." : "⚡ Seed 8 Sports Templates"}
+                      </button>
+                      <button
+                        style={s.btnPrimary}
+                        onClick={() => {
+                          setNewTplCommand("");
+                          setNewTplName("");
+                          setNewTplDesc("");
+                          setNewTplSheetName("");
+                          setNewTplFields([
+                            { key: "full_name", label: "Full Name", required: true, type: "text" },
+                            { key: "phone_number", label: "Phone Number", required: true, type: "phone" },
+                            { key: "details", label: "Details / Notes", required: true, type: "text" },
+                          ]);
+                          setShowTemplateModal(true);
+                        }}
+                      >
+                        + Create New Template
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "0 20px 16px" }}>
+                    <input
+                      style={s.searchInput}
+                      placeholder="Search templates by /command, name, or Google Sheet tab..."
+                      value={templateSearch}
+                      onChange={(e) => setTemplateSearch(e.target.value)}
+                    />
+                  </div>
+
+                  {templates.length === 0 ? (
+                    <div style={{ padding: 40, textAlign: "center", color: "#667781" }}>
+                      <p style={{ fontSize: 16, marginBottom: 12 }}>No chat templates found for this organization.</p>
+                      <button
+                        style={{ ...s.btnPrimary, margin: "0 auto" }}
+                        onClick={handleSeedSportsTemplates}
+                        disabled={seedingTemplates}
+                      >
+                        {seedingTemplates ? "Generating..." : "⚡ One-Click Seed 8 Sports Foundation Templates"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16, padding: "0 20px 24px" }}>
+                      {templates
+                        .filter((t) =>
+                          t.command.toLowerCase().includes(templateSearch.toLowerCase()) ||
+                          t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+                          t.sheetName.toLowerCase().includes(templateSearch.toLowerCase())
+                        )
+                        .map((t) => (
+                          <div
+                            key={t.id}
+                            style={{
+                              border: "1px solid #E0E0E0",
+                              borderRadius: 12,
+                              padding: 16,
+                              backgroundColor: "#FFFFFF",
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <div>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ fontSize: 24 }}>{t.icon || "📋"}</span>
+                                  <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "#111B21" }}>{t.name}</div>
+                                    <code style={{ fontSize: 13, color: "#00A884", fontWeight: 700 }}>/{t.command}</code>
+                                  </div>
+                                </div>
+                                <span style={{
+                                  backgroundColor: "#E0F2F1",
+                                  color: "#00796B",
+                                  padding: "3px 8px",
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                }}>
+                                  📊 Tab: {t.sheetName}
+                                </span>
+                              </div>
+
+                              {t.description && (
+                                <p style={{ fontSize: 12, color: "#54656F", margin: "0 0 10px", lineHeight: 1.4 }}>
+                                  {t.description}
+                                </p>
+                              )}
+
+                              <div style={{ marginBottom: 12 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#8696A0", textTransform: "uppercase", marginBottom: 6 }}>
+                                  Columns ({t.fields?.length || 0}):
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                  {(t.fields || []).map((f: any, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      style={{
+                                        backgroundColor: "#F5F6F6",
+                                        border: "1px solid #E0E0E0",
+                                        borderRadius: 4,
+                                        padding: "2px 6px",
+                                        fontSize: 11,
+                                        color: "#111B21",
+                                      }}
+                                    >
+                                      {f.label}{f.required ? " *" : ""}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid #F0F2F5" }}>
+                              <span style={{ fontSize: 11, color: "#8696A0" }}>
+                                Preserved in Google Sheets
+                              </span>
+                              <button
+                                style={{ ...s.btnDangerSmall, padding: "4px 8px", fontSize: 12 }}
+                                onClick={() => handleDeleteTemplate(t.command, t.sheetName)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* DUAL-SYNCED SUBMISSIONS CARD */}
+                <div style={{ ...s.card, marginTop: 24 }}>
+                  <div style={{ ...s.cardHeader, flexWrap: "wrap", gap: 12 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 20 }}>💾</span>
+                        <h2 style={s.cardTitle}>Database &amp; Google Sheets Form Submissions</h2>
+                      </div>
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "#667781" }}>
+                        All user inputs via slash commands and AI extraction are stored permanently in PostgreSQL and dual-synced with Google Sheets.
+                      </p>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 6, fontSize: 12 }}>
+                        <span style={{ ...s.badgeSuccess, padding: "5px 10px" }}>
+                          🟢 Synced: {submissionStats.synced}
+                        </span>
+                        {submissionStats.pending > 0 && (
+                          <span style={{ ...s.badgeWarning, padding: "5px 10px", backgroundColor: "#FFF3E0", color: "#E65100" }}>
+                            🟡 DB Only: {submissionStats.pending}
+                          </span>
+                        )}
+                        <span style={{ ...s.badgeDefault, padding: "5px 10px" }}>
+                          Total: {submissionStats.total}
+                        </span>
+                      </div>
+
+                      {submissionStats.pending > 0 && (
+                        <button
+                          style={{ ...s.btnSecondary, background: "#E8F5E9", color: "#2E7D32", borderColor: "#A5D6A7", fontWeight: 700 }}
+                          onClick={handleSyncAllSubmissions}
+                          disabled={syncingAll}
+                        >
+                          {syncingAll ? "Syncing..." : `⚡ Sync Pending (${submissionStats.pending}) to Sheets`}
+                        </button>
+                      )}
+
+                      <button style={s.btnSmall} onClick={fetchData}>
+                        🔄 Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "0 20px 16px" }}>
+                    <input
+                      style={s.searchInput}
+                      placeholder="Search submissions by ref ID, submitter name, phone, command (/booking), sheet tab, or content..."
+                      value={submissionSearch}
+                      onChange={(e) => setSubmissionSearch(e.target.value)}
+                    />
+                  </div>
+
+                  {filteredSubmissions.length === 0 ? (
+                    <div style={{ padding: 40, textAlign: "center", color: "#667781" }}>
+                      <p style={{ fontSize: 15, margin: 0 }}>
+                        {submissionSearch ? "No matching submissions found." : "No template or form submissions recorded yet."}
+                      </p>
+                      <p style={{ fontSize: 13, color: "#8696A0", marginTop: 4 }}>
+                        When members complete forms via <code>/booking</code>, <code>/membership</code>, etc. in chat, they will appear here and sync to Google Sheets.
+                      </p>
+                    </div>
+                  ) : (
+                    <table style={s.table}>
+                      <thead>
+                        <tr style={s.tableHeadRow}>
+                          {["Ref ID & Time", "Template & Sheet", "Submitter", "Extracted Data", "Status & Sync", "Action"].map((h) => (
+                            <th key={h} style={s.th}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredSubmissions.map((sub) => (
+                          <tr key={sub.id} style={s.tr}>
+                            <td style={s.td}>
+                              <strong style={{ fontSize: 12, fontFamily: "monospace", color: "#00A884" }}>
+                                {sub.submissionRef || sub.id.slice(0, 10)}
+                              </strong>
+                              <div style={{ fontSize: 11, color: "#8696A0", marginTop: 2 }}>
+                                {new Date(sub.createdAt).toLocaleString([], {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </td>
+
+                            <td style={s.td}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span>{sub.template?.icon || "📋"}</span>
+                                <div>
+                                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                    {sub.template?.name || sub.templateCommand}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "#00796B" }}>
+                                    📊 Tab: <strong>{sub.sheetName}</strong>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td style={s.td}>
+                              <div>
+                                <strong>{sub.userName || "Anonymous"}</strong>
+                              </div>
+                              {sub.userPhone && (
+                                <div style={{ fontSize: 12, color: "#54656F" }}>📞 {sub.userPhone}</div>
+                              )}
+                            </td>
+
+                            <td style={{ ...s.td, maxWidth: 320 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {Object.entries(sub.data || {}).map(([key, val]) => (
+                                  <span
+                                    key={key}
+                                    style={{
+                                      backgroundColor: "#F5F6F6",
+                                      border: "1px solid #E0E0E0",
+                                      padding: "2px 6px",
+                                      borderRadius: 4,
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    <strong>{key}:</strong> {String(val)}
+                                  </span>
+                                ))}
+                              </div>
+                              {sub.rawMessage && (
+                                <div style={{ fontSize: 11, color: "#8696A0", marginTop: 4, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 300 }}>
+                                  Msg: &ldquo;{sub.rawMessage}&rdquo;
+                                </div>
+                              )}
+                            </td>
+
+                            <td style={s.td}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                                {sub.syncedToSheet ? (
+                                  <span style={{ ...s.badgeSuccess, fontSize: 11 }}>
+                                    ✅ Synced to Sheets
+                                  </span>
+                                ) : (
+                                  <span style={{ ...s.badgeWarning, fontSize: 11, backgroundColor: "#FFF3E0", color: "#E65100" }}>
+                                    ⚠️ In DB Only
+                                  </span>
+                                )}
+                                <span style={{ ...s.badgeDefault, fontSize: 10 }}>
+                                  {sub.status}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td style={s.td}>
+                              {!sub.syncedToSheet && (
+                                <button
+                                  style={{ ...s.btnSmall, fontSize: 11, padding: "4px 8px", backgroundColor: "#E8F5E9", color: "#2E7D32", borderColor: "#A5D6A7" }}
+                                  onClick={() => handleSyncOneSubmission(sub.id)}
+                                  disabled={syncingId === sub.id}
+                                >
+                                  {syncingId === sub.id ? "Syncing..." : "Sync to Sheet"}
+                                </button>
+                              )}
+                              {sub.syncedToSheet && (
+                                <span style={{ fontSize: 11, color: "#8696A0" }}>100% In Sync</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             )}
@@ -1437,9 +1969,158 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
       )}
+
+      {/* CREATE TEMPLATE MODAL */}
+      {showTemplateModal && (
+        <div style={s.modalOverlay}>
+          <div style={{ ...s.modalCard, maxWidth: 540 }}>
+            <div style={s.modalHeader}>
+              <h3 style={s.modalTitle}>Create New Chat Template</h3>
+              <button style={s.closeBtn} onClick={() => setShowTemplateModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCreateTemplate}>
+              <p style={{ fontSize: 13, color: "#667781", marginBottom: 16 }}>
+                Every template automatically generates a dedicated tab in your Google Spreadsheet.
+              </p>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Slash Command (lowercase, e.g. physio, diet, camp) *</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 16, color: "#00A884" }}>/</span>
+                  <input
+                    style={s.input}
+                    placeholder="booking"
+                    value={newTplCommand}
+                    onChange={(e) => {
+                      const cmd = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+                      setNewTplCommand(cmd);
+                      if (!newTplSheetName || newTplSheetName.endsWith("Records")) {
+                        setNewTplSheetName(cmd ? `${cmd.charAt(0).toUpperCase() + cmd.slice(1)} Records` : "");
+                      }
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Display Name *</label>
+                <input
+                  style={s.input}
+                  placeholder="Facility Booking"
+                  value={newTplName}
+                  onChange={(e) => setNewTplName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Dedicated Google Sheet Tab Name *</label>
+                <input
+                  style={s.input}
+                  placeholder="Facility Bookings"
+                  value={newTplSheetName}
+                  onChange={(e) => setNewTplSheetName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Icon Emoji</label>
+                <input
+                  style={{ ...s.input, width: 80 }}
+                  value={newTplIcon}
+                  onChange={(e) => setNewTplIcon(e.target.value)}
+                />
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Description (Optional)</label>
+                <input
+                  style={s.input}
+                  placeholder="e.g. Reserve badminton courts or turf"
+                  value={newTplDesc}
+                  onChange={(e) => setNewTplDesc(e.target.value)}
+                />
+              </div>
+
+              {/* Dynamic Column Builder */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label style={{ ...s.label, marginBottom: 0 }}>Template Columns / Headers</label>
+                  <button
+                    type="button"
+                    style={{ ...s.btnSecondary, padding: "4px 8px", fontSize: 12 }}
+                    onClick={() => {
+                      setNewTplFields([
+                        ...newTplFields,
+                        { key: `col_${Date.now().toString().slice(-4)}`, label: "", required: true, type: "text" },
+                      ]);
+                    }}
+                  >
+                    + Add Column
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                  {newTplFields.map((field, idx) => (
+                    <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input
+                        style={{ ...s.input, flex: 2, padding: "6px 8px", fontSize: 13 }}
+                        placeholder="Column Name (e.g. Age Group)"
+                        value={field.label}
+                        onChange={(e) => {
+                          const updated = [...newTplFields];
+                          updated[idx].label = e.target.value;
+                          updated[idx].key = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "_");
+                          setNewTplFields(updated);
+                        }}
+                        required
+                      />
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#54656F" }}>
+                        <input
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(e) => {
+                            const updated = [...newTplFields];
+                            updated[idx].required = e.target.checked;
+                            setNewTplFields(updated);
+                          }}
+                        />
+                        Req
+                      </label>
+                      {newTplFields.length > 1 && (
+                        <button
+                          type="button"
+                          style={{ background: "transparent", border: "none", color: "#C62828", cursor: "pointer", fontSize: 14 }}
+                          onClick={() => {
+                            setNewTplFields(newTplFields.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={s.modalFooter}>
+                <button type="button" style={s.btnSecondary} onClick={() => setShowTemplateModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" style={s.btnPrimary} disabled={creatingTemplate}>
+                  {creatingTemplate ? "Creating Sheet..." : "Create Template & Sheet"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // --- Styles ---
 

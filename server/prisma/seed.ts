@@ -166,6 +166,159 @@ async function main() {
   });
   console.log(`✅ SheetConnection: spreadsheet "${sheetConnection.spreadsheetId}" (${sheetConnection.sheetName})`);
 
+  // ─── 7. Default Sports Foundation Templates ────────────────────────────────
+  const sportsTemplates = [
+    {
+      command: "booking",
+      name: "Facility & Court Booking",
+      description: "Reserve badminton courts, football turf, cricket nets, or gym slots",
+      sheetName: "Facility Bookings",
+      icon: "🏟️",
+      fields: [
+        { key: "name", label: "Full Name", required: true, type: "text" },
+        { key: "phone", label: "Phone Number", required: true, type: "phone" },
+        { key: "sport", label: "Sport / Facility", required: true, type: "text" },
+        { key: "date", label: "Booking Date", required: true, type: "date" },
+        { key: "time_slot", label: "Time Slot", required: true, type: "text" },
+        { key: "duration", label: "Duration", required: false, type: "text" },
+        { key: "players", label: "No. of Players", required: false, type: "number" },
+        { key: "notes", label: "Special Requests", required: false, type: "text" },
+      ],
+      promptMessage: "🏟️ *Facility & Court Booking*\n_Reserve badminton courts, football turf, cricket nets, or gym slots_\n\nPlease copy, fill, and reply with the details below:\n• **Full Name** *(Required)*\n• **Phone Number** *(Required)*\n• **Sport / Facility** *(Required)*\n• **Booking Date** *(Required)*\n• **Time Slot** *(Required)*\n• **Duration** *(Optional)*\n• **No. of Players** *(Optional)*\n• **Special Requests** *(Optional)*",
+    },
+    {
+      command: "membership",
+      name: "Academy & Club Membership",
+      description: "Register for ongoing sports foundation training batches and memberships",
+      sheetName: "Memberships",
+      icon: "🏅",
+      fields: [
+        { key: "name", label: "Member Name", required: true, type: "text" },
+        { key: "guardian", label: "Guardian / Parent Name", required: false, type: "text" },
+        { key: "phone", label: "Contact Phone", required: true, type: "phone" },
+        { key: "email", label: "Email Address", required: false, type: "text" },
+        { key: "sport", label: "Sport Program", required: true, type: "text" },
+        { key: "tier", label: "Membership Plan", required: true, type: "choice" },
+        { key: "start_date", label: "Preferred Start Date", required: true, type: "date" },
+      ],
+      promptMessage: "🏅 *Academy & Club Membership*\n_Register for ongoing sports foundation training batches and memberships_\n\nPlease reply with the details below:\n• **Member Name** *(Required)*\n• **Contact Phone** *(Required)*\n• **Sport Program** *(Required)*\n• **Membership Plan** *(Required)*\n• **Preferred Start Date** *(Required)*",
+    },
+    {
+      command: "trial",
+      name: "Free Assessment & Trial Session",
+      description: "Book an athlete skills evaluation or trial training session",
+      sheetName: "Trial Assessments",
+      icon: "⚡",
+      fields: [
+        { key: "name", label: "Athlete Name", required: true, type: "text" },
+        { key: "age", label: "Age / Category", required: true, type: "text" },
+        { key: "phone", label: "Contact Phone", required: true, type: "phone" },
+        { key: "sport", label: "Sport of Interest", required: true, type: "text" },
+        { key: "skill_level", label: "Experience Level", required: true, type: "choice" },
+        { key: "preferred_date", label: "Preferred Trial Date", required: true, type: "date" },
+      ],
+      promptMessage: "⚡ *Free Assessment & Trial Session*\n_Book an athlete skills evaluation or trial training session_\n\nPlease reply with:\n• **Athlete Name** *(Required)*\n• **Age / Category** *(Required)*\n• **Contact Phone** *(Required)*\n• **Sport of Interest** *(Required)*\n• **Experience Level** *(Required)*\n• **Preferred Trial Date** *(Required)*",
+    },
+    {
+      command: "tournament",
+      name: "Tournament & Event Entry",
+      description: "Register for upcoming foundation leagues, matches, and tournaments",
+      sheetName: "Tournament Entries",
+      icon: "🏆",
+      fields: [
+        { key: "team_or_player", label: "Team / Player Name", required: true, type: "text" },
+        { key: "captain_phone", label: "Contact Phone", required: true, type: "phone" },
+        { key: "event_name", label: "Tournament / Event Name", required: true, type: "text" },
+        { key: "category", label: "Age Category / Division", required: true, type: "text" },
+      ],
+      promptMessage: "🏆 *Tournament & Event Entry*\nPlease reply with:\n• **Team / Player Name** *(Required)*\n• **Contact Phone** *(Required)*\n• **Tournament / Event Name** *(Required)*\n• **Age Category / Division** *(Required)*",
+    },
+    {
+      command: "equipment",
+      name: "Sports Kit & Gear Requisition",
+      description: "Request foundation sports gear, kits, balls, or protective equipment",
+      sheetName: "Equipment Requests",
+      icon: "🎽",
+      fields: [
+        { key: "requested_by", label: "Student / Coach Name", required: true, type: "text" },
+        { key: "sport", label: "Sport Department", required: true, type: "text" },
+        { key: "gear_item", label: "Gear / Kit Requested", required: true, type: "text" },
+        { key: "quantity", label: "Quantity", required: true, type: "number" },
+        { key: "issue_date", label: "Required Date", required: true, type: "date" },
+      ],
+      promptMessage: "🎽 *Sports Kit & Gear Requisition*\nPlease reply with:\n• **Student / Coach Name** *(Required)*\n• **Sport Department** *(Required)*\n• **Gear / Kit Requested** *(Required)*\n• **Quantity** *(Required)*\n• **Required Date** *(Required)*",
+    },
+    {
+      command: "coaching",
+      name: "1-on-1 Coaching Consultation",
+      description: "Schedule private high-performance coaching or fitness consultation",
+      sheetName: "Coaching Enquiries",
+      icon: "🏋️",
+      fields: [
+        { key: "name", label: "Trainee Name", required: true, type: "text" },
+        { key: "phone", label: "Contact Phone", required: true, type: "phone" },
+        { key: "sport", label: "Target Sport", required: true, type: "text" },
+        { key: "skill_level", label: "Current Level", required: true, type: "choice" },
+        { key: "goals", label: "Focus / Goals", required: true, type: "text" },
+      ],
+      promptMessage: "🏋️ *1-on-1 Coaching Consultation*\nPlease reply with:\n• **Trainee Name** *(Required)*\n• **Contact Phone** *(Required)*\n• **Target Sport** *(Required)*\n• **Current Level** *(Required)*\n• **Focus / Goals** *(Required)*",
+    },
+    {
+      command: "feedback",
+      name: "Athlete & Parent Feedback",
+      description: "Submit feedback, coaching reviews, or facility improvement suggestions",
+      sheetName: "Feedback & Grievances",
+      icon: "💬",
+      fields: [
+        { key: "name", label: "Your Name", required: true, type: "text" },
+        { key: "category", label: "Feedback Category", required: true, type: "choice" },
+        { key: "rating", label: "Overall Rating (1 to 5)", required: true, type: "number" },
+        { key: "comments", label: "Comments & Suggestions", required: true, type: "text" },
+      ],
+      promptMessage: "💬 *Athlete & Parent Feedback*\nPlease reply with:\n• **Your Name** *(Required)*\n• **Feedback Category** *(Required)*\n• **Overall Rating (1 to 5)** *(Required)*\n• **Comments & Suggestions** *(Required)*",
+    },
+    {
+      command: "sponsor",
+      name: "Foundation Grant & Sponsorship",
+      description: "Partner with our sports foundation to sponsor athletes, equipment, or events",
+      sheetName: "Sponsorships & Grants",
+      icon: "🤝",
+      fields: [
+        { key: "sponsor_name", label: "Sponsor / Organization", required: true, type: "text" },
+        { key: "contact_person", label: "Contact Person", required: true, type: "text" },
+        { key: "contact_phone", label: "Phone / WhatsApp", required: true, type: "phone" },
+        { key: "program", label: "Supported Sport / Athlete", required: true, type: "text" },
+        { key: "contribution", label: "Contribution / Grant Amount", required: true, type: "text" },
+      ],
+      promptMessage: "🤝 *Foundation Grant & Sponsorship*\nPlease reply with:\n• **Sponsor / Organization** *(Required)*\n• **Contact Person** *(Required)*\n• **Phone / WhatsApp** *(Required)*\n• **Supported Sport / Athlete** *(Required)*\n• **Contribution / Grant Amount** *(Required)*",
+    },
+  ];
+
+  for (const tpl of sportsTemplates) {
+    await prisma.chatTemplate.upsert({
+      where: { tenantId_command: { tenantId: tenant.id, command: tpl.command } },
+      update: {
+        name: tpl.name,
+        description: tpl.description,
+        sheetName: tpl.sheetName,
+        icon: tpl.icon,
+        fields: tpl.fields,
+        promptMessage: tpl.promptMessage,
+      },
+      create: {
+        tenantId: tenant.id,
+        command: tpl.command,
+        name: tpl.name,
+        description: tpl.description,
+        sheetName: tpl.sheetName,
+        icon: tpl.icon,
+        fields: tpl.fields,
+        promptMessage: tpl.promptMessage,
+      },
+    });
+  }
+  console.log(`✅ Seeded 8 sports templates for tenant "${tenant.name}"`);
+
   console.log("\n✅ OFA Sports seeding complete!\n");
 }
 
