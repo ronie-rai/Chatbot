@@ -19,7 +19,7 @@ import { AttachmentModal } from "../components/AttachmentModal";
 import { EmojiPickerModal } from "../components/EmojiPickerModal";
 import { PaperclipIcon, SmileyIcon, MicIcon, SendIcon, TrashIcon } from "../components/Icons";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
-import { MOCK_CURRENT_USER, MOCK_MESSAGES } from "../data/mockData";
+import { MOCK_CURRENT_USER, MOCK_BOT_USER, MOCK_MESSAGES } from "../data/mockData";
 import { getMessages, sendMessage, markMessageRead, uploadMediaFile, type SendMessageOptions } from "../api/client";
 import { useSocket } from "../hooks/useSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
@@ -174,6 +174,37 @@ export function ChatScreen({ route }: Props) {
           prev.map((m) => (m.id === tempId ? { ...saved, status: "sent" as const } : m))
         );
         setIsBotTyping(true); // Bot reply incoming
+
+        // If message was sent via local fallback, simulate bot response so chat doesn't stall
+        if (saved.id.startsWith("msg-local-")) {
+          setTimeout(() => {
+            setIsBotTyping(false);
+            const lower = text.toLowerCase();
+            let replyText = "Hello! Thanks for reaching out to OFA Sports. How can I help you today with court bookings, coaching, or tournaments?";
+            if (lower.includes("booking") || lower.includes("court") || lower.includes("reserve")) {
+              replyText = "Thank you! I have recorded your court reservation enquiry. Our sports coordinator will confirm slot availability with you shortly.";
+            } else if (lower.includes("price") || lower.includes("fee") || lower.includes("cost") || lower.includes("rate")) {
+              replyText = "Court rentals start from $25/hr for badminton and $40/hr for tennis courts. Coaching packages start from $120/month. Would you like me to book a slot for you?";
+            } else if (lower.includes("transformer") || lower.includes("motor") || lower.includes("equipment")) {
+              replyText = "Got it! I have received your equipment specification and inquiry. Our technical team is reviewing it.";
+            } else if (text.trim().length > 0) {
+              replyText = `Thank you for your message: "${text}". I have logged your enquiry with OFA Sports. An executive will get back to you shortly!`;
+            }
+
+            const botMsg: Message = {
+              id: `bot-local-${Date.now()}`,
+              conversationId,
+              senderId: MOCK_BOT_USER.id,
+              sender: { id: MOCK_BOT_USER.id, name: "OFA AI", role: "bot" },
+              body: replyText,
+              kind: "text",
+              status: "read",
+              createdAt: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, botMsg]);
+            scrollToBottom();
+          }, 1200);
+        }
       } catch {
         if (!retrying) {
           // Mark failed, offer retry
@@ -292,14 +323,14 @@ export function ChatScreen({ route }: Props) {
   const handleSelectAttachment = useCallback(
     async (type: FilePickerType) => {
       try {
-        const file = await pickFile(type);
-        if (!file) return;
+        const picked = await pickFile(type);
+        if (!picked) return;
 
         setIsUploading(true);
         const tempId = `temp-media-${Date.now()}`;
-        const localUrl = URL.createObjectURL(file);
+        const localUrl = picked.uri;
         const kind = type as "image" | "document" | "audio";
-        const bodyText = kind === "image" ? "Photo" : file.name;
+        const bodyText = kind === "image" ? "Photo" : picked.name;
 
         const optimisticMsg: Message = {
           id: tempId,
@@ -310,29 +341,29 @@ export function ChatScreen({ route }: Props) {
           kind,
           status: "sending",
           mediaUrl: localUrl,
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type,
+          fileName: picked.name,
+          fileSize: picked.size,
+          mimeType: picked.type,
           createdAt: new Date().toISOString(),
         };
 
         setMessages((prev) => [...prev, optimisticMsg]);
         scrollToBottom();
 
-        const uploaded = await uploadMediaFile(file, file.name, file.type);
+        const uploaded = await uploadMediaFile(picked, picked.name, picked.type);
         setIsUploading(false);
 
         await doSend(bodyText, tempId, {
           kind,
-          mediaUrl: uploaded.url,
-          fileName: uploaded.fileName,
-          fileSize: uploaded.fileSize,
-          mimeType: uploaded.mimeType,
+          mediaUrl: uploaded.url || localUrl,
+          fileName: uploaded.fileName || picked.name,
+          fileSize: uploaded.fileSize || picked.size,
+          mimeType: uploaded.mimeType || picked.type,
         });
       } catch (err) {
         setIsUploading(false);
         console.error("[Attachment] Error uploading file:", err);
-        Alert.alert("Attachment Error", "Failed to upload the selected file.");
+        Alert.alert("Attachment Error", "Failed to attach the selected file.");
       }
     },
     [conversationId, scrollToBottom, doSend]

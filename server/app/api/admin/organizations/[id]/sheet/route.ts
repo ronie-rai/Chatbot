@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractSpreadsheetId } from "@/lib/ai";
+import { verifyAdminToken } from "@/lib/adminAuth";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const { id: tenantId } = await params;
     const body = await request.json();

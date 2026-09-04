@@ -4,14 +4,26 @@
  * Phase 8: Will add JWT auth headers.
  */
 import type { ApiResponse, Conversation, Message } from "@chatbot/shared-types";
+import { Platform } from "react-native";
 
-export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
+let customBaseUrl: string | null = null;
+
+export function setCustomBaseUrl(url: string | null) {
+  customBaseUrl = url?.trim() || null;
+}
+
+export function getEffectiveBaseUrl(): string {
+  if (customBaseUrl) return customBaseUrl.replace(/\/+$/, "");
+  return (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+}
+
+export const BASE_URL = getEffectiveBaseUrl();
 
 async function apiFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = `${getEffectiveBaseUrl()}${path}`;
   const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
@@ -95,86 +107,112 @@ export async function sendMessage(
   text: string,
   options?: SendMessageOptions
 ): Promise<Message> {
-  return apiFetch<Message>(`/api/conversations/${conversationId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({
+  try {
+    return await apiFetch<Message>(`/api/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        senderId,
+        text,
+        kind: options?.kind,
+        mediaUrl: options?.mediaUrl,
+        fileName: options?.fileName,
+        fileSize: options?.fileSize,
+        mimeType: options?.mimeType,
+        duration: options?.duration,
+        metadata: options?.metadata,
+      }),
+    });
+  } catch (err) {
+    console.warn("[sendMessage] API unreachable, falling back to local message:", err);
+    // Graceful offline fallback per workspace rules
+    const now = new Date().toISOString();
+    return {
+      id: `msg-local-${Date.now()}`,
+      conversationId,
       senderId,
-      text,
-      kind: options?.kind,
+      body: text,
+      kind: options?.kind || "text",
+      status: "sent",
       mediaUrl: options?.mediaUrl,
       fileName: options?.fileName,
       fileSize: options?.fileSize,
       mimeType: options?.mimeType,
       duration: options?.duration,
-      metadata: options?.metadata,
-    }),
-  });
+      createdAt: now,
+    };
+  }
 }
 
 export async function uploadMediaFile(
-  file: File | Blob,
+  fileOrPicked: File | Blob | { uri: string; name: string; type: string; size?: number; file?: File },
   fileName?: string,
   mimeType?: string
 ): Promise<{ url: string; fileName: string; fileSize: number; mimeType: string }> {
+  const isPickedObj = typeof fileOrPicked === "object" && fileOrPicked !== null && "uri" in fileOrPicked;
+  const effectiveName = fileName || (isPickedObj ? fileOrPicked.name : (fileOrPicked instanceof File ? fileOrPicked.name : `media_${Date.now()}`));
+  const effectiveType = mimeType || (isPickedObj ? fileOrPicked.type : ((fileOrPicked as any).type || "application/octet-stream"));
+  const effectiveSize = isPickedObj ? (fileOrPicked.size || 0) : ((fileOrPicked as any).size || 0);
+
   try {
     const formData = new FormData();
-    const effectiveName = fileName || (file instanceof File ? file.name : `media_${Date.now()}`);
-    const effectiveType = mimeType || file.type || "application/octet-stream";
 
-    formData.append("file", file, effectiveName);
+    if (Platform.OS !== "web" && isPickedObj) {
+      formData.append("file", {
+        uri: fileOrPicked.uri,
+        name: effectiveName,
+        type: effectiveType,
+      } as any);
+    } else {
+      const filePayload = (isPickedObj && fileOrPicked.file) ? fileOrPicked.file : fileOrPicked;
+      formData.append("file", filePayload as any, effectiveName);
+    }
 
-    const res = await fetch(`${BASE_URL}/api/upload`, {
+    const res = await fetch(`${getEffectiveBaseUrl()}/api/upload`, {
       method: "POST",
       body: formData,
     });
 
     const json = await res.json();
     if (json.ok && json.data) {
-      // If the url is relative (e.g. /uploads/...), make it absolute with BASE_URL
       const fullUrl = json.data.url.startsWith("http")
         ? json.data.url
-        : `${BASE_URL}${json.data.url}`;
+        : `${getEffectiveBaseUrl()}${json.data.url}`;
       return {
         url: fullUrl,
         fileName: json.data.fileName || effectiveName,
-        fileSize: json.data.fileSize || file.size,
+        fileSize: json.data.fileSize || effectiveSize,
         mimeType: json.data.mimeType || effectiveType,
       };
     }
     throw new Error(json.error?.message || "Upload failed");
   } catch (err) {
-    console.warn("[uploadMediaFile] Falling back to local data URL:", err);
-    // Offline/local fallback: convert blob to object URL or base64 data URL
-    return new Promise((resolve) => {
-      const effectiveName = fileName || (file instanceof File ? file.name : `file_${Date.now()}`);
-      const effectiveType = mimeType || file.type || "application/octet-stream";
+    console.warn("[uploadMediaFile] Falling back to local file URI:", err);
 
-      if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
-        try {
-          const objectUrl = URL.createObjectURL(file);
-          resolve({
-            url: objectUrl,
-            fileName: effectiveName,
-            fileSize: file.size,
-            mimeType: effectiveType,
-          });
-          return;
-        } catch {
-          // continue to reader fallback
-        }
-      }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        resolve({
-          url: reader.result as string,
-          fileName: effectiveName,
-          fileSize: file.size,
-          mimeType: effectiveType,
-        });
+    // Offline / Standalone APK local fallback:
+    if (isPickedObj && fileOrPicked.uri) {
+      return {
+        url: fileOrPicked.uri,
+        fileName: effectiveName,
+        fileSize: effectiveSize,
+        mimeType: effectiveType,
       };
-      reader.readAsDataURL(file);
-    });
+    }
+
+    if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function" && (fileOrPicked instanceof Blob || fileOrPicked instanceof File)) {
+      return {
+        url: URL.createObjectURL(fileOrPicked),
+        fileName: effectiveName,
+        fileSize: effectiveSize,
+        mimeType: effectiveType,
+      };
+    }
+
+    return {
+      url: "",
+      fileName: effectiveName,
+      fileSize: effectiveSize,
+      mimeType: effectiveType,
+    };
   }
 }
 

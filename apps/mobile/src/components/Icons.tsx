@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Platform, StyleSheet } from "react-native";
+import { View, Text, Platform, StyleSheet } from "react-native";
 
 interface IconProps {
   size?: number;
@@ -24,7 +24,7 @@ export function PaperclipIcon({ size = 22, color = "#54656F" }: IconProps) {
       </svg>
     );
   }
-  return <View style={styles.fallback} />;
+  return <Text style={[styles.nativeEmoji, { fontSize: size - 2 }]}>📎</Text>;
 }
 
 export function SmileyIcon({ size = 22, color = "#54656F" }: IconProps) {
@@ -48,7 +48,7 @@ export function SmileyIcon({ size = 22, color = "#54656F" }: IconProps) {
       </svg>
     );
   }
-  return <View style={styles.fallback} />;
+  return <Text style={[styles.nativeEmoji, { fontSize: size - 2 }]}>😊</Text>;
 }
 
 export function MicIcon({ size = 22, color = "#54656F" }: IconProps) {
@@ -72,10 +72,10 @@ export function MicIcon({ size = 22, color = "#54656F" }: IconProps) {
       </svg>
     );
   }
-  return <View style={styles.fallback} />;
+  return <Text style={[styles.nativeEmoji, { fontSize: size - 2 }]}>🎙️</Text>;
 }
 
-export function SendIcon({ size = 20, color = "#FFFFFF" }: IconProps) {
+export function SendIcon({ size = 18, color = "#FFFFFF" }: IconProps) {
   if (Platform.OS === "web") {
     return (
       <svg
@@ -94,7 +94,13 @@ export function SendIcon({ size = 20, color = "#FFFFFF" }: IconProps) {
       </svg>
     );
   }
-  return <View style={styles.fallback} />;
+  return (
+    <View style={styles.sendIconContainer}>
+      <Text style={[styles.nativeSendGlyph, { color, fontSize: size }]}>
+        ➤
+      </Text>
+    </View>
+  );
 }
 
 export function TrashIcon({ size = 20, color = "#E53935" }: IconProps) {
@@ -116,12 +122,24 @@ export function TrashIcon({ size = 20, color = "#E53935" }: IconProps) {
       </svg>
     );
   }
-  return <View style={styles.fallback} />;
+  return <Text style={[styles.nativeEmoji, { fontSize: size - 2 }]}>🗑️</Text>;
 }
 
 const styles = StyleSheet.create({
-  fallback: {
-    width: 22,
-    height: 22,
+  nativeEmoji: {
+    textAlign: "center",
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
+  sendIconContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 2,
+  },
+  nativeSendGlyph: {
+    fontWeight: "900",
+    textAlign: "center",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
 });

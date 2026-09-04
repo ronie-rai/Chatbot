@@ -178,7 +178,7 @@ Extract all provided information into clean, descriptive keys:
 /**
  * Searches candidate filesystem paths for the Google service account JSON file.
  */
-function resolveCredentialsPath(rawPath?: string): string | null {
+export function resolveCredentialsPath(rawPath?: string): string | null {
   const p = rawPath ?? process.env.GOOGLE_SERVICE_ACCOUNT_PATH ?? "./google-credentials.json";
   const candidates = [
     p,
@@ -194,6 +194,16 @@ function resolveCredentialsPath(rawPath?: string): string | null {
     }
   }
   return null;
+}
+
+export async function getGoogleSheetsClient() {
+  const resolvedCredPath = resolveCredentialsPath();
+  if (!resolvedCredPath) return null;
+  const auth = new google.auth.GoogleAuth({
+    keyFile: resolvedCredPath,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  return google.sheets({ version: "v4", auth });
 }
 
 /**

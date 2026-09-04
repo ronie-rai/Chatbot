@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyAdminToken } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const tenantId = searchParams.get("tenantId");
@@ -59,6 +68,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { name, tenantId, kind, participantIds } = body as {

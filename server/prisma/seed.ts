@@ -29,11 +29,12 @@ async function main() {
   console.log(`✅ Tenant: ${tenant.name} (${tenant.id})`);
 
   // ─── 2. Users ──────────────────────────────────────────────────────────────
-  const adminPasswordHash = await bcrypt.hash("password123", 10);
+  const adminPassword = process.env.SUPER_ADMIN_PASSWORD || "OFA@SuperAdmin2026";
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
 
   const admin = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: "admin@ofa-sports.com" } },
-    update: {},
+    update: { passwordHash: adminPasswordHash },
     create: {
       tenantId: tenant.id,
       name: "Admin",
@@ -43,6 +44,22 @@ async function main() {
     },
   });
   console.log(`✅ User:  ${admin.name} <${admin.email}> (${admin.role})`);
+
+  const demoPassword = process.env.DEMO_USER_PASSWORD || "demo@user123";
+  const demoPasswordHash = await bcrypt.hash(demoPassword, 10);
+
+  const demoUser = await prisma.user.upsert({
+    where: { tenantId_email: { tenantId: tenant.id, email: "demo@ofa-sports.com" } },
+    update: { passwordHash: demoPasswordHash },
+    create: {
+      tenantId: tenant.id,
+      name: "Demo User",
+      email: "demo@ofa-sports.com",
+      passwordHash: demoPasswordHash,
+      role: UserRole.USER,
+    },
+  });
+  console.log(`✅ User:  ${demoUser.name} <${demoUser.email}> (${demoUser.role})`);
 
   const bot = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: "bot@ofa-sports.com" } },
@@ -82,6 +99,20 @@ async function main() {
     create: {
       conversationId: conversation.id,
       userId: admin.id,
+    },
+  });
+
+  await prisma.participant.upsert({
+    where: {
+      conversationId_userId: {
+        conversationId: conversation.id,
+        userId: demoUser.id,
+      },
+    },
+    update: {},
+    create: {
+      conversationId: conversation.id,
+      userId: demoUser.id,
     },
   });
 

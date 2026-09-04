@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyAdminToken } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const [
       totalTenants,

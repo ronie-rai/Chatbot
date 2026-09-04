@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { verifyAdminToken } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const tenantId = searchParams.get("tenantId");
@@ -44,6 +53,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { name, email, password, role, tenantId } = body as {
@@ -112,6 +129,53 @@ export async function POST(request: Request): Promise<NextResponse> {
     console.error("[POST /api/admin/users]", error);
     return NextResponse.json(
       { ok: false, error: { code: "INTERNAL_ERROR", message: "Failed to create user" } },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json(
+        { ok: false, error: { code: "MISSING_ID", message: "User ID is required" } },
+        { status: 400 }
+      );
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) {
+      return NextResponse.json(
+        { ok: false, error: { code: "NOT_FOUND", message: "User not found" } },
+        { status: 404 }
+      );
+    }
+
+    // Never delete BOT users
+    if (targetUser.role === "BOT") {
+      return NextResponse.json(
+        { ok: false, error: { code: "FORBIDDEN", message: "Cannot delete system bot user" } },
+        { status: 400 }
+      );
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return NextResponse.json({ ok: true, message: `User ${targetUser.email} deleted successfully` });
+  } catch (error) {
+    console.error("[DELETE /api/admin/users]", error);
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: "Failed to delete user" } },
       { status: 500 }
     );
   }

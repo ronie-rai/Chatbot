@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
+import { createAdminToken } from "@/lib/adminAuth";
 
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL ?? "admin@ofa-sports.com";
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD ?? "OFA@SuperAdmin2026";
-const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET ?? "changeme";
-
-// Simple HMAC token: base64(email + ":" + timestamp + ":" + hmac)
-function createToken(email: string): string {
-  const payload = `${email}:${Date.now()}`;
-  const hmac = crypto.createHmac("sha256", NEXTAUTH_SECRET).update(payload).digest("hex");
-  return Buffer.from(`${payload}:${hmac}`).toString("base64");
-}
 
 export async function POST(req: Request) {
   try {
@@ -27,7 +19,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const token = createToken(email);
+    const token = createAdminToken(email);
     return NextResponse.json({ ok: true, token });
   } catch {
     return NextResponse.json(

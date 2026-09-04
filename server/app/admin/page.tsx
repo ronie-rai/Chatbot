@@ -64,6 +64,47 @@ interface GroupItem {
   }>;
 }
 
+interface ConversationItem {
+  id: string;
+  name: string;
+  kind: string;
+  tenantId: string;
+  tenantName: string;
+  totalMessages: number;
+  createdAt: string;
+  updatedAt: string;
+  participants: Array<{ name: string; email: string; role: string }>;
+  lastMessage: { senderName: string; body: string; createdAt: string } | null;
+}
+
+interface ConversationDetail {
+  id: string;
+  name: string;
+  kind: string;
+  tenantName: string;
+  createdAt: string;
+  participants: Array<{ id: string; name: string; email: string; role: string }>;
+  messages: Array<{
+    id: string;
+    senderId: string;
+    senderName: string;
+    senderRole: string;
+    body: string;
+    kind: string;
+    createdAt: string;
+  }>;
+}
+
+interface SystemHealth {
+  uptimeSeconds: number;
+  timestamp: string;
+  services: {
+    database: { name: string; status: string; latencyMs: number };
+    realtime: { name: string; status: string; latencyMs: number; connectedClients: number };
+    ai: { name: string; status: string; model: string };
+  };
+}
+
 interface AISettings {
   hasApiKey: boolean;
   maskedApiKey: string;
@@ -131,7 +172,7 @@ function SuperAdminLogin({ onLogin }: { onLogin: () => void }) {
             <input
               type="password"
               style={ls.input}
-              placeholder="........"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -143,8 +184,8 @@ function SuperAdminLogin({ onLogin }: { onLogin: () => void }) {
         </form>
 
         <p style={ls.hint}>
-          Credentials set via <code>SUPER_ADMIN_EMAIL</code> &amp;{" "}
-          <code>SUPER_ADMIN_PASSWORD</code> in <code>.env</code>
+          Credentials governed by <code>SUPER_ADMIN_EMAIL</code> &amp;{" "}
+          <code>SUPER_ADMIN_PASSWORD</code> in <code>server/.env</code>
         </p>
       </div>
     </div>
@@ -207,45 +248,43 @@ const ls: Record<string, React.CSSProperties> = {
   },
   input: {
     width: "100%",
-    padding: "11px 14px",
+    padding: "10px 14px",
     borderRadius: 8,
-    border: "1.5px solid #D1D7DB",
+    border: "1px solid #D1D7DB",
     fontSize: 14,
     boxSizing: "border-box",
-    color: "#111B21",
     outline: "none",
+    color: "#111B21",
   },
   btn: {
     width: "100%",
-    padding: "13px",
-    borderRadius: 10,
-    background: "linear-gradient(135deg, #075E54, #25D366)",
+    padding: "12px",
+    background: "linear-gradient(135deg, #00A884, #128C7E)",
     color: "#FFFFFF",
     border: "none",
+    borderRadius: 8,
     fontSize: 15,
     fontWeight: 700,
     cursor: "pointer",
     marginTop: 8,
   },
-  hint: { fontSize: 12, color: "#8696A0", marginTop: 20 },
+  hint: { fontSize: 12, color: "#8696A0", marginTop: 20, lineHeight: 1.5 },
 };
 
-// --- Main Page Export ---
+// --- Main Page Component ---
 
-export default function AdminDashboardPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+export default function SuperAdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
     const token = sessionStorage.getItem("sa_token");
-    setIsAuthenticated(!!token);
-    setCheckingAuth(false);
+    setIsAuthenticated(Boolean(token));
   }, []);
 
-  if (checkingAuth) {
+  if (isAuthenticated === null) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#075E54" }}>
-        <div style={{ color: "#fff", fontSize: 16 }}>Loading...</div>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#F0F2F5" }}>
+        <div style={s.spinner} />
       </div>
     );
   }
@@ -267,29 +306,31 @@ export default function AdminDashboardPage() {
 // --- Admin Panel ---
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "orgs" | "groups" | "users" | "ai" | "audit" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "orgs" | "groups" | "users" | "conversations" | "ai" | "audit" | "settings">("overview");
 
   const [overview, setOverview] = useState<OverviewStats | null>(null);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Org modal
+  // Modal states
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgSlug, setNewOrgSlug] = useState("");
   const [newOrgSheetUrl, setNewOrgSheetUrl] = useState("");
   const [newOrgSheetName, setNewOrgSheetName] = useState("Bookings");
 
-  // Sheet config modal
   const [editingSheetOrg, setEditingSheetOrg] = useState<Organization | null>(null);
   const [sheetUrlInput, setSheetUrlInput] = useState("");
   const [sheetTabNameInput, setSheetTabNameInput] = useState("Bookings");
+  const [testingSheet, setTestingSheet] = useState(false);
+  const [sheetTestResult, setSheetTestResult] = useState<{ ok: boolean; message: string; tabs?: string[]; email?: string } | null>(null);
 
-  // User modal
   const [showUserModal, setShowUserModal] = useState(false);
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
@@ -297,12 +338,15 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [newUserRole, setNewUserRole] = useState<"USER" | "ADMIN">("USER");
   const [newUserTenantId, setNewUserTenantId] = useState("");
 
-  // Group modal
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupTenantId, setNewGroupTenantId] = useState("");
   const [newGroupKind, setNewGroupKind] = useState<"GROUP" | "AI" | "DIRECT">("GROUP");
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
+
+  // Conversation inspector modal
+  const [inspectingConv, setInspectingConv] = useState<ConversationDetail | null>(null);
+  const [loadingConvDetail, setLoadingConvDetail] = useState(false);
 
   // AI settings
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -311,10 +355,11 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [testingConnection, setTestingConnection] = useState(false);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
 
-  // Search
+  // Searches
   const [orgSearch, setOrgSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [groupSearch, setGroupSearch] = useState("");
+  const [convSearch, setConvSearch] = useState("");
 
   const showToast = (type: "success" | "error", text: string) => {
     setActionMessage({ type, text });
@@ -329,13 +374,16 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewRes, orgsRes, usersRes, groupsRes, aiRes] = await Promise.all([
+      const [overviewRes, orgsRes, usersRes, groupsRes, convRes, healthRes, aiRes] = await Promise.all([
         fetch("/api/admin/overview", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/organizations", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/users", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/groups", { headers: authHeaders() }).then((r) => r.json()),
+        fetch("/api/admin/conversations", { headers: authHeaders() }).then((r) => r.json()),
+        fetch("/api/admin/system-health", { headers: authHeaders() }).then((r) => r.json()),
         fetch("/api/admin/ai-settings", { headers: authHeaders() }).then((r) => r.json()),
       ]);
+
       if (overviewRes.ok) setOverview(overviewRes.data);
       if (orgsRes.ok) {
         setOrgs(orgsRes.data);
@@ -346,13 +394,15 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       }
       if (usersRes.ok) setUsers(usersRes.data);
       if (groupsRes.ok) setGroups(groupsRes.data);
+      if (convRes.ok) setConversations(convRes.data);
+      if (healthRes.ok) setSystemHealth(healthRes.data);
       if (aiRes.ok) {
         setAiSettings(aiRes.data);
         setSelectedAiModel(aiRes.data.model);
         setSystemPromptInput(aiRes.data.systemPrompt);
       }
     } catch {
-      showToast("error", "Failed to connect to backend");
+      showToast("error", "Failed to connect to backend server");
     } finally {
       setLoading(false);
     }
@@ -405,14 +455,46 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       });
       const data = await res.json();
       if (data.ok) {
-        showToast("success", `Sheet configured for "${editingSheetOrg.name}"!`);
+        showToast("success", `Google Sheet configured for "${editingSheetOrg.name}"!`);
         setEditingSheetOrg(null);
+        setSheetTestResult(null);
         fetchData();
       } else {
-        showToast("error", data.error?.message || "Failed");
+        showToast("error", data.error?.message || "Failed to save configuration");
       }
     } catch {
       showToast("error", "Request failed");
+    }
+  };
+
+  const handleTestSheetConnection = async () => {
+    if (!sheetUrlInput.trim()) return;
+    setTestingSheet(true);
+    setSheetTestResult(null);
+    try {
+      const res = await fetch("/api/admin/sheet-test", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ spreadsheetIdOrUrl: sheetUrlInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSheetTestResult({
+          ok: true,
+          message: data.data.message,
+          tabs: data.data.tabs,
+          email: data.data.serviceAccountEmail,
+        });
+      } else {
+        setSheetTestResult({
+          ok: false,
+          message: data.error?.message || "Cannot access spreadsheet",
+        });
+      }
+    } catch {
+      setSheetTestResult({ ok: false, message: "Network error testing spreadsheet" });
+    } finally {
+      setTestingSheet(false);
     }
   };
 
@@ -438,7 +520,26 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         setNewUserName(""); setNewUserEmail("");
         fetchData();
       } else {
-        showToast("error", data.error?.message || "Failed");
+        showToast("error", data.error?.message || "Failed to add user");
+      }
+    } catch {
+      showToast("error", "Request failed");
+    }
+  };
+
+  const handleDeleteUser = async (id: string, email: string) => {
+    if (!window.confirm(`Are you sure you want to remove user "${email}"?`)) return;
+    try {
+      const res = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", `User "${email}" deleted successfully`);
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Failed to delete user");
       }
     } catch {
       showToast("error", "Request failed");
@@ -466,11 +567,53 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         setNewGroupName(""); setSelectedParticipantIds([]);
         fetchData();
       } else {
-        showToast("error", data.error?.message || "Failed");
+        showToast("error", data.error?.message || "Failed to create group");
       }
     } catch {
       showToast("error", "Request failed");
     }
+  };
+
+  const handleInspectConversation = async (convId: string) => {
+    setLoadingConvDetail(true);
+    try {
+      const res = await fetch(`/api/admin/conversations?id=${encodeURIComponent(convId)}`, {
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setInspectingConv(data.data);
+      } else {
+        showToast("error", data.error?.message || "Failed to load conversation");
+      }
+    } catch {
+      showToast("error", "Request failed");
+    } finally {
+      setLoadingConvDetail(false);
+    }
+  };
+
+  const exportConversationsToCsv = () => {
+    if (conversations.length === 0) return;
+    const rows = [
+      ["Organization", "Conversation Name", "Type", "Total Messages", "Last Message", "Created At"],
+      ...conversations.map((c) => [
+        `"${c.tenantName}"`,
+        `"${c.name}"`,
+        `"${c.kind}"`,
+        c.totalMessages,
+        `"${(c.lastMessage?.body || "").replace(/"/g, '""')}"`,
+        `"${c.createdAt}"`,
+      ]),
+    ];
+    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `ofa_chat_inquiries_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSaveAiSettings = async () => {
@@ -491,7 +634,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         setApiKeyInput("");
         fetchData();
       } else {
-        showToast("error", data.error?.message || "Failed");
+        showToast("error", data.error?.message || "Failed to save AI settings");
       }
     } catch {
       showToast("error", "Request failed");
@@ -541,12 +684,19 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       g.name.toLowerCase().includes(groupSearch.toLowerCase()) ||
       g.tenantName.toLowerCase().includes(groupSearch.toLowerCase())
   );
+  const filteredConversations = conversations.filter(
+    (c) =>
+      c.name.toLowerCase().includes(convSearch.toLowerCase()) ||
+      c.tenantName.toLowerCase().includes(convSearch.toLowerCase()) ||
+      (c.lastMessage?.body && c.lastMessage.body.toLowerCase().includes(convSearch.toLowerCase()))
+  );
 
   const tabs: Array<{ key: typeof activeTab; label: string }> = [
     { key: "overview", label: "Overview" },
     { key: "orgs", label: `Organizations (${orgs.length})` },
     { key: "groups", label: `Groups (${groups.length})` },
     { key: "users", label: `Users (${users.length})` },
+    { key: "conversations", label: `Chats & Leads (${conversations.length})` },
     { key: "ai", label: "AI Agent" },
     { key: "audit", label: "Security" },
     { key: "settings", label: "System" },
@@ -559,12 +709,12 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <div style={s.brandGroup}>
             <div style={s.brandIconWrap}>OFA</div>
             <div>
-              <h1 style={s.brandTitle}>OFA Sports - Super Admin Panel</h1>
-              <p style={s.brandSubtitle}>Organizations - Users - Groups - AI Agent - Security</p>
+              <h1 style={s.brandTitle}>OFA Sports — Super Admin Panel</h1>
+              <p style={s.brandSubtitle}>Organizations • Users • Live Chats • Groq AI • Google Sheets</p>
             </div>
           </div>
           <div style={s.headerActions}>
-            <span style={s.badgeLive}>Live</span>
+            <span style={s.badgeLive}>Protected &amp; Verified</span>
             <a href="/api/health" target="_blank" style={s.healthLink}>API Health</a>
             <button style={s.logoutBtn} onClick={onLogout}>Sign Out</button>
           </div>
@@ -578,7 +728,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           borderColor: actionMessage.type === "success" ? "#4CAF50" : "#E53935",
           color: actionMessage.type === "success" ? "#1B5E20" : "#B71C1C",
         }}>
-          <span>{actionMessage.type === "success" ? "[OK]" : "[!]"}</span>
+          <span>{actionMessage.type === "success" ? "✅" : "⚠️"}</span>
           <span>{actionMessage.text}</span>
         </div>
       )}
@@ -602,11 +752,50 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
             {/* OVERVIEW TAB */}
             {activeTab === "overview" && overview && (
               <div>
+                {/* Live System Health Diagnostics */}
+                {systemHealth && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 20 }}>
+                    <div style={{ ...s.statCard, padding: 18, textAlign: "left" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#54656F" }}>Database (PostgreSQL)</span>
+                        <span style={systemHealth.services.database.status === "ONLINE" ? s.badgeSuccess : s.badgeWarning}>
+                          {systemHealth.services.database.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#667781" }}>
+                        Ping: <strong>{systemHealth.services.database.latencyMs}ms</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ ...s.statCard, padding: 18, textAlign: "left" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#54656F" }}>Realtime (Socket.io)</span>
+                        <span style={systemHealth.services.realtime.status === "ONLINE" ? s.badgeSuccess : s.badgeWarning}>
+                          {systemHealth.services.realtime.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#667781" }}>
+                        Port 4000 • Active sockets: <strong>{systemHealth.services.realtime.connectedClients}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ ...s.statCard, padding: 18, textAlign: "left" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#54656F" }}>AI Provider (Groq)</span>
+                        <span style={s.badgeInfo}>{systemHealth.services.ai.status}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#667781" }}>
+                        Model: <strong>{systemHealth.services.ai.model.split("/").pop()}</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div style={s.grid4}>
                   {[
                     { label: "Organizations", value: overview.totalTenants },
                     { label: "Registered Users", value: overview.totalUsers },
-                    { label: "Groups and Chats", value: overview.totalConversations },
+                    { label: "Total Conversations", value: overview.totalConversations },
                     { label: "Google Sheets Active", value: overview.totalSheets },
                   ].map((stat) => (
                     <div key={stat.label} style={s.statCard}>
@@ -621,8 +810,9 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                     { label: "+ New Organization", fn: () => setShowOrgModal(true), color: "#00A884" },
                     { label: "+ Add User", fn: () => setShowUserModal(true), color: "#1565C0" },
                     { label: "+ Create Group", fn: () => setShowGroupModal(true), color: "#6A1B9A" },
+                    { label: "View Chats & Leads", fn: () => setActiveTab("conversations"), color: "#00796B" },
                     { label: "Configure AI", fn: () => setActiveTab("ai"), color: "#E65100" },
-                    { label: "Refresh", fn: fetchData, color: "#37474F" },
+                    { label: "Refresh Data", fn: fetchData, color: "#37474F" },
                   ].map((q) => (
                     <button key={q.label} style={{ ...s.quickBtn, backgroundColor: q.color }} onClick={q.fn}>
                       {q.label}
@@ -662,6 +852,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                                 setEditingSheetOrg(found);
                                 setSheetUrlInput(found.sheetConnection?.spreadsheetId || "");
                                 setSheetTabNameInput(found.sheetConnection?.sheetName || "Bookings");
+                                setSheetTestResult(null);
                               }
                             }}>Config Sheet</button>
                           </td>
@@ -699,8 +890,8 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                       <tr key={org.id} style={s.tr}>
                         <td style={s.td}>
                           <strong>{org.name}</strong>
-                          {(org.slug === "ofa_sports" || org.slug === "ofa-sports") && (
-                            <span style={{ ...s.badgeSuccess, marginLeft: 8 }}>Default</span>
+                          {(org.slug.toLowerCase().includes("ofa")) && (
+                            <span style={{ ...s.badgeSuccess, marginLeft: 8 }}>Primary</span>
                           )}
                         </td>
                         <td style={s.td}><code>{org.slug}</code></td>
@@ -719,6 +910,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                             setEditingSheetOrg(org);
                             setSheetUrlInput(org.sheetConnection?.spreadsheetId || "");
                             setSheetTabNameInput(org.sheetConnection?.sheetName || "Bookings");
+                            setSheetTestResult(null);
                           }}>
                             {org.sheetConnection ? "Edit Sheet" : "Setup Sheet"}
                           </button>
@@ -735,8 +927,8 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
               <div style={s.card}>
                 <div style={s.cardHeader}>
                   <div>
-                    <h2 style={s.cardTitle}>Groups and Conversations</h2>
-                    <p style={s.cardSubtitle}>Manage groups across all organizations.</p>
+                    <h2 style={s.cardTitle}>Groups and Channels</h2>
+                    <p style={s.cardSubtitle}>Manage chat channels and group assignments.</p>
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
                     <input style={s.searchInput} placeholder="Search groups..." value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
@@ -782,8 +974,8 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
               <div style={s.card}>
                 <div style={s.cardHeader}>
                   <div>
-                    <h2 style={s.cardTitle}>People and Members</h2>
-                    <p style={s.cardSubtitle}>Manage users across all organizations with roles.</p>
+                    <h2 style={s.cardTitle}>People &amp; Members</h2>
+                    <p style={s.cardSubtitle}>Manage accounts and assign administrative roles.</p>
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
                     <input style={s.searchInput} placeholder="Search users..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
@@ -793,7 +985,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                 <table style={s.table}>
                   <thead>
                     <tr style={s.tableHeadRow}>
-                      {["Name", "Email", "Role", "Organization", "Joined"].map((h) => (
+                      {["Name", "Email", "Role", "Organization", "Joined", "Actions"].map((h) => (
                         <th key={h} style={s.th}>{h}</th>
                       ))}
                     </tr>
@@ -810,6 +1002,72 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                         </td>
                         <td style={s.td}><strong>{u.tenantName}</strong></td>
                         <td style={s.td}>{new Date(u.createdAt).toLocaleDateString()}</td>
+                        <td style={s.td}>
+                          {u.role !== "BOT" && (
+                            <button
+                              style={{ ...s.btnSmall, color: "#C62828", borderColor: "#C62828" }}
+                              onClick={() => handleDeleteUser(u.id, u.email)}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* CONVERSATIONS & LEADS TAB */}
+            {activeTab === "conversations" && (
+              <div style={s.card}>
+                <div style={s.cardHeader}>
+                  <div>
+                    <h2 style={s.cardTitle}>Conversations &amp; Customer Leads</h2>
+                    <p style={s.cardSubtitle}>Inspect customer inquiries, booking requests, and AI responses.</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <input
+                      style={s.searchInput}
+                      placeholder="Search inquiries or messages..."
+                      value={convSearch}
+                      onChange={(e) => setConvSearch(e.target.value)}
+                    />
+                    <button style={{ ...s.btnSecondary, backgroundColor: "#00A884", color: "#FFF", border: "none" }} onClick={exportConversationsToCsv}>
+                      Export CSV
+                    </button>
+                  </div>
+                </div>
+
+                <table style={s.table}>
+                  <thead>
+                    <tr style={s.tableHeadRow}>
+                      {["Organization", "Chat Title", "Total Msgs", "Last Message Snippet", "Last Active", "Action"].map((h) => (
+                        <th key={h} style={s.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredConversations.map((c) => (
+                      <tr key={c.id} style={s.tr}>
+                        <td style={s.td}><strong>{c.tenantName}</strong></td>
+                        <td style={s.td}>
+                          <strong>{c.name}</strong>
+                          <span style={{ ...s.badgeDefault, marginLeft: 8, fontSize: 11 }}>{c.kind}</span>
+                        </td>
+                        <td style={s.td}>{c.totalMessages}</td>
+                        <td style={{ ...s.td, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {c.lastMessage ? (
+                            <span><strong>{c.lastMessage.senderName}:</strong> {c.lastMessage.body}</span>
+                          ) : <span style={{ color: "#999" }}>No messages yet</span>}
+                        </td>
+                        <td style={s.td}>{new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                        <td style={s.td}>
+                          <button style={s.btnSmall} onClick={() => handleInspectConversation(c.id)}>
+                            Inspect Chat
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -824,9 +1082,9 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                   <div style={s.cardHeader}>
                     <div>
                       <h2 style={s.cardTitle}>Global AI Agent Configuration</h2>
-                      <p style={s.cardSubtitle}>Shared across all organizations. Changes apply immediately.</p>
+                      <p style={s.cardSubtitle}>Powered by Groq Cloud. Changes apply dynamically to all chats.</p>
                     </div>
-                    <span style={{ ...s.badgeSuccess, fontSize: 13 }}>{aiSettings.hasApiKey ? "API Key Set" : "No API Key"}</span>
+                    <span style={{ ...s.badgeSuccess, fontSize: 13 }}>{aiSettings.hasApiKey ? "API Key Configured" : "No Key Set"}</span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
                     <div>
@@ -838,7 +1096,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                             {testingConnection ? "Testing..." : "Test"}
                           </button>
                         </div>
-                        <small style={s.hint}>Leave blank to keep current key ({aiSettings.maskedApiKey || "from .env"}).</small>
+                        <small style={s.hint}>Leave blank to keep existing key ({aiSettings.maskedApiKey || "from .env"}).</small>
                       </div>
                       <div style={s.formGroup}>
                         <label style={s.label}>AI Model</label>
@@ -854,7 +1112,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                         value={systemPromptInput}
                         onChange={(e) => setSystemPromptInput(e.target.value)}
                       />
-                      <small style={s.hint}>Defines the AI persona for all organizations and groups.</small>
+                      <small style={s.hint}>Defines the AI persona and automated sheet logging behaviors.</small>
                     </div>
                   </div>
                   <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
@@ -869,7 +1127,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
                 <div style={s.card}>
                   <div style={s.cardHeader}>
-                    <h2 style={s.cardTitle}>Per-Organization Google Sheet Status</h2>
+                    <h2 style={s.cardTitle}>Organization Google Sheet Connections</h2>
                   </div>
                   <table style={s.table}>
                     <thead>
@@ -889,6 +1147,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                               setEditingSheetOrg(org);
                               setSheetUrlInput(org.sheetConnection?.spreadsheetId || "");
                               setSheetTabNameInput(org.sheetConnection?.sheetName || "Bookings");
+                              setSheetTestResult(null);
                             }}>
                               {org.sheetConnection ? "Edit" : "Setup"}
                             </button>
@@ -906,37 +1165,34 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
                   <div style={s.card}>
-                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Super Admin Credentials</h2>
+                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Super Admin Credentials &amp; Sessions</h2>
                     <p style={{ fontSize: 14, color: "#54656F", lineHeight: 1.6 }}>
-                      Stored securely in <code>.env</code> - never persisted to the database.
+                      Protected by timing-safe HMAC-SHA256 tokens.
                     </p>
                     {[
                       ["Login Email", "SUPER_ADMIN_EMAIL in .env"],
                       ["Password", "SUPER_ADMIN_PASSWORD in .env"],
-                      ["Session", "Browser sessionStorage (auto-expires on tab close)"],
-                      ["Registration", "Disabled - org creation is admin-only"],
+                      ["Token Algorithm", "HMAC-SHA256 with timing-safe validation"],
+                      ["Session Lifetime", "24 hours auto-expiration"],
+                      ["API Protection", "All /api/admin/* endpoints guarded"],
                     ].map(([k, v]) => (
                       <div key={k} style={s.auditRow}>
                         <span style={s.auditLabel}>{k}</span>
                         <code style={s.auditValue}>{v}</code>
                       </div>
                     ))}
-                    <div style={{ marginTop: 16, padding: "10px 14px", background: "#E8F5E9", borderRadius: 8, fontSize: 13, color: "#2E7D32" }}>
-                      No public registration endpoint exposed.
-                    </div>
                   </div>
 
                   <div style={s.card}>
-                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Tenant Isolation</h2>
+                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Tenant Isolation &amp; Safety</h2>
                     <p style={{ fontSize: 14, color: "#54656F", lineHeight: 1.6 }}>
-                      Every DB query is scoped by <code>tenantId</code>. Data never leaks between orgs.
+                      Every Prisma query strictly scopes by <code>tenantId</code>.
                     </p>
                     {[
-                      ["AI Calls", "Scoped to org's SheetConnection"],
+                      ["AI Tool Calls", "Scoped to tenant sheet connection"],
                       ["Socket Events", "Room-scoped per conversationId"],
-                      ["API Key", "Single shared key (never per-org)"],
-                      ["Google Sheet", "1 sheet per org (enforced in DB)"],
-                      ["Prisma Queries", "Always filtered by tenantId"],
+                      ["Database Queries", "Enforced tenantId filtering"],
+                      ["Google Sheet", "Isolated 1:1 per organization"],
                     ].map(([k, v]) => (
                       <div key={k} style={s.auditRow}>
                         <span style={s.auditLabel}>{k}</span>
@@ -944,45 +1200,23 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                       </div>
                     ))}
                   </div>
-                </div>
-
-                <div style={s.card}>
-                  <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Organization Access Summary</h2>
-                  <table style={s.table}>
-                    <thead>
-                      <tr style={s.tableHeadRow}>
-                        {["Organization", "Users", "Groups", "Sheet", "Isolation"].map((h) => <th key={h} style={s.th}>{h}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orgs.map((org) => (
-                        <tr key={org.id} style={s.tr}>
-                          <td style={s.td}><strong>{org.name}</strong> <code style={{ fontSize: 11 }}>({org.slug})</code></td>
-                          <td style={s.td}>{org.userCount}</td>
-                          <td style={s.td}>{org.groupCount}</td>
-                          <td style={s.td}>{org.sheetConnection ? <span style={s.badgeSuccess}>Configured</span> : <span style={s.badgeWarning}>Missing</span>}</td>
-                          <td style={s.td}><span style={s.badgeSuccess}>Isolated</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               </div>
             )}
 
-            {/* SYSTEM SETTINGS TAB */}
+            {/* SYSTEM TAB */}
             {activeTab === "settings" && (
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
                   <div style={s.card}>
-                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Environment and Runtime</h2>
+                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Production Architecture</h2>
                     {[
-                      ["Runtime", "Next.js 14 (App Router)"],
+                      ["Web Server", "Next.js 14 App Router (Port 3000)"],
                       ["Database", "PostgreSQL via Prisma ORM"],
-                      ["Realtime", "Socket.io (port 4000)"],
-                      ["AI Provider", "Groq Cloud"],
-                      ["Google Sheets", "Service Account Auth"],
-                      ["Mobile Client", "React Native (Expo + Web)"],
+                      ["Realtime Server", "Socket.io (Port 4000)"],
+                      ["AI Provider", "Groq Cloud (openai/gpt-oss-120b)"],
+                      ["Sheets Sync", "Google Service Account OAuth"],
+                      ["Mobile Client", "React Native (Standalone Release APK)"],
                     ].map(([k, v]) => (
                       <div key={k} style={s.auditRow}>
                         <span style={s.auditLabel}>{k}</span>
@@ -990,39 +1224,23 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                       </div>
                     ))}
                   </div>
-                  <div style={s.card}>
-                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Architecture Rules</h2>
-                    {[
-                      ["Org Registration", "Super Admin only - no self-signup"],
-                      ["Google Sheet", "Strictly 1 per organization"],
-                      ["AI API Key", "Common across all orgs"],
-                      ["Socket Events", "Always room-scoped (never global)"],
-                      ["Tenant Queries", "Always filtered by tenantId"],
-                      ["Secrets", ".env only - never hardcoded"],
-                    ].map(([k, v]) => (
-                      <div key={k} style={s.auditRow}>
-                        <span style={s.auditLabel}>{k}</span>
-                        <code style={{ ...s.auditValue, color: "#1565C0" }}>{v}</code>
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
-                <div style={s.card}>
-                  <h2 style={{ ...s.cardTitle, marginBottom: 8 }}>Quick Actions</h2>
-                  <p style={{ ...s.cardSubtitle, marginBottom: 20 }}>Common super admin shortcuts.</p>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    {[
-                      { label: "New Organization", fn: () => { setActiveTab("orgs"); setShowOrgModal(true); }, color: "#00A884" },
-                      { label: "Add User", fn: () => { setActiveTab("users"); setShowUserModal(true); }, color: "#1565C0" },
-                      { label: "New Group", fn: () => { setActiveTab("groups"); setShowGroupModal(true); }, color: "#6A1B9A" },
-                      { label: "Refresh Data", fn: fetchData, color: "#E65100" },
-                      { label: "Sign Out", fn: onLogout, color: "#B71C1C" },
-                    ].map((q) => (
-                      <button key={q.label} style={{ ...s.btnPrimary, backgroundColor: q.color }} onClick={q.fn}>
-                        {q.label}
-                      </button>
-                    ))}
+                  <div style={s.card}>
+                    <h2 style={{ ...s.cardTitle, marginBottom: 16 }}>Quick Admin Actions</h2>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+                      {[
+                        { label: "+ New Organization", fn: () => { setActiveTab("orgs"); setShowOrgModal(true); }, color: "#00A884" },
+                        { label: "+ Add User", fn: () => { setActiveTab("users"); setShowUserModal(true); }, color: "#1565C0" },
+                        { label: "View Chats & Leads", fn: () => setActiveTab("conversations"), color: "#00796B" },
+                        { label: "Export Leads (CSV)", fn: exportConversationsToCsv, color: "#E65100" },
+                        { label: "Refresh Status", fn: fetchData, color: "#37474F" },
+                        { label: "Sign Out", fn: onLogout, color: "#B71C1C" },
+                      ].map((q) => (
+                        <button key={q.label} style={{ ...s.btnPrimary, backgroundColor: q.color }} onClick={q.fn}>
+                          {q.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1037,7 +1255,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <div style={s.modalCard}>
             <div style={s.modalHeader}>
               <h3 style={s.modalTitle}>Create New Organization</h3>
-              <button style={s.closeBtn} onClick={() => setShowOrgModal(false)}>X</button>
+              <button style={s.closeBtn} onClick={() => setShowOrgModal(false)}>✕</button>
             </div>
             <form onSubmit={handleCreateOrg}>
               <div style={s.formGroup}><label style={s.label}>Organization Name *</label><input style={s.input} placeholder="e.g. OFA Sports Academy" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} required /></div>
@@ -1053,18 +1271,69 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {/* SHEET CONFIG MODAL */}
+      {/* SHEET CONFIG & DIAGNOSTIC MODAL */}
       {editingSheetOrg && (
         <div style={s.modalOverlay}>
           <div style={s.modalCard}>
             <div style={s.modalHeader}>
               <h3 style={s.modalTitle}>Google Sheet for {editingSheetOrg.name}</h3>
-              <button style={s.closeBtn} onClick={() => setEditingSheetOrg(null)}>X</button>
+              <button style={s.closeBtn} onClick={() => setEditingSheetOrg(null)}>✕</button>
             </div>
             <form onSubmit={handleSaveSheetConfig}>
-              <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>One Google Sheet per organization. AI calls sync automatically.</p>
-              <div style={s.formGroup}><label style={s.label}>Sheet URL or Spreadsheet ID *</label><input style={s.input} placeholder="https://docs.google.com/spreadsheets/d/.../edit" value={sheetUrlInput} onChange={(e) => setSheetUrlInput(e.target.value)} required /></div>
-              <div style={s.formGroup}><label style={s.label}>Sheet Tab Name</label><input style={s.input} placeholder="Bookings" value={sheetTabNameInput} onChange={(e) => setSheetTabNameInput(e.target.value)} /></div>
+              <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
+                Every organization links to a dedicated Google Sheet. Customer inquiries and bookings are appended automatically.
+              </p>
+              <div style={s.formGroup}>
+                <label style={s.label}>Sheet URL or Spreadsheet ID *</label>
+                <input
+                  style={s.input}
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                  value={sheetUrlInput}
+                  onChange={(e) => {
+                    setSheetUrlInput(e.target.value);
+                    setSheetTestResult(null);
+                  }}
+                  required
+                />
+              </div>
+              <div style={s.formGroup}>
+                <label style={s.label}>Sheet Tab Name</label>
+                <input
+                  style={s.input}
+                  placeholder="Bookings"
+                  value={sheetTabNameInput}
+                  onChange={(e) => setSheetTabNameInput(e.target.value)}
+                />
+              </div>
+
+              {/* Diagnostic Test Button */}
+              <div style={{ marginBottom: 16 }}>
+                <button
+                  type="button"
+                  style={{ ...s.btnSecondary, width: "100%", padding: "10px" }}
+                  onClick={handleTestSheetConnection}
+                  disabled={testingSheet || !sheetUrlInput.trim()}
+                >
+                  {testingSheet ? "Verifying Google Service Account Access..." : "🔍 Test Connection & Permissions"}
+                </button>
+                {sheetTestResult && (
+                  <div style={{
+                    marginTop: 10,
+                    padding: 12,
+                    borderRadius: 8,
+                    fontSize: 13,
+                    backgroundColor: sheetTestResult.ok ? "#E8F5E9" : "#FFEBEE",
+                    color: sheetTestResult.ok ? "#1B5E20" : "#B71C1C",
+                  }}>
+                    <strong>{sheetTestResult.ok ? "✅ Connected: " : "❌ Error: "}</strong>
+                    {sheetTestResult.message}
+                    {sheetTestResult.tabs && (
+                      <div style={{ marginTop: 4 }}>Tabs: {sheetTestResult.tabs.join(", ")}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div style={s.modalFooter}>
                 <button type="button" style={s.btnSecondary} onClick={() => setEditingSheetOrg(null)}>Cancel</button>
                 <button type="submit" style={s.btnPrimary}>Save Sheet Configuration</button>
@@ -1080,7 +1349,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <div style={s.modalCard}>
             <div style={s.modalHeader}>
               <h3 style={s.modalTitle}>Add Person to Organization</h3>
-              <button style={s.closeBtn} onClick={() => setShowUserModal(false)}>X</button>
+              <button style={s.closeBtn} onClick={() => setShowUserModal(false)}>✕</button>
             </div>
             <form onSubmit={handleCreateUser}>
               <div style={s.formGroup}><label style={s.label}>Select Organization *</label><select style={s.input} value={newUserTenantId} onChange={(e) => setNewUserTenantId(e.target.value)} required>{orgs.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.slug})</option>)}</select></div>
@@ -1103,34 +1372,68 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <div style={s.modalCard}>
             <div style={s.modalHeader}>
               <h3 style={s.modalTitle}>Create New Group</h3>
-              <button style={s.closeBtn} onClick={() => setShowGroupModal(false)}>X</button>
+              <button style={s.closeBtn} onClick={() => setShowGroupModal(false)}>✕</button>
             </div>
             <form onSubmit={handleCreateGroup}>
-              <div style={s.formGroup}><label style={s.label}>Select Organization *</label><select style={s.input} value={newGroupTenantId} onChange={(e) => { setNewGroupTenantId(e.target.value); setSelectedParticipantIds([]); }} required>{orgs.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.slug})</option>)}</select></div>
-              <div style={s.formGroup}><label style={s.label}>Group Name *</label><input style={s.input} placeholder="e.g. Tennis Tournament 2026" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} required /></div>
-              <div style={s.formGroup}><label style={s.label}>Conversation Type</label><select style={s.input} value={newGroupKind} onChange={(e) => setNewGroupKind(e.target.value as "GROUP" | "AI" | "DIRECT")}><option value="GROUP">Group (Multi-user)</option><option value="AI">AI Chat (OFA AI Assistant)</option><option value="DIRECT">Direct 1-on-1</option></select></div>
-              <div style={s.formGroup}>
-                <label style={s.label}>Select Members</label>
-                <div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid #E0E0E0", borderRadius: 8, padding: 8 }}>
-                  {users.filter((u) => u.tenantId === newGroupTenantId).map((u) => {
-                    const checked = selectedParticipantIds.includes(u.id);
-                    return (
-                      <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", cursor: "pointer" }}>
-                        <input type="checkbox" checked={checked} onChange={(e) => {
-                          if (e.target.checked) setSelectedParticipantIds([...selectedParticipantIds, u.id]);
-                          else setSelectedParticipantIds(selectedParticipantIds.filter((id) => id !== u.id));
-                        }} />
-                        <span style={{ fontSize: 13 }}>{u.name} ({u.email}) - {u.role}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              <div style={s.formGroup}><label style={s.label}>Select Organization *</label><select style={s.input} value={newGroupTenantId} onChange={(e) => setNewGroupTenantId(e.target.value)} required>{orgs.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.slug})</option>)}</select></div>
+              <div style={s.formGroup}><label style={s.label}>Group Name *</label><input style={s.input} placeholder="e.g. Coaching Inquiries" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} required /></div>
+              <div style={s.formGroup}><label style={s.label}>Channel Type</label><select style={s.input} value={newGroupKind} onChange={(e) => setNewGroupKind(e.target.value as "GROUP" | "AI" | "DIRECT")}><option value="GROUP">Team Group</option><option value="AI">AI Assistant Channel</option><option value="DIRECT">Direct Chat</option></select></div>
               <div style={s.modalFooter}>
                 <button type="button" style={s.btnSecondary} onClick={() => setShowGroupModal(false)}>Cancel</button>
                 <button type="submit" style={s.btnPrimary}>Create Group</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONVERSATION INSPECTION MODAL */}
+      {inspectingConv && (
+        <div style={s.modalOverlay}>
+          <div style={{ ...s.modalCard, maxWidth: 680, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+            <div style={s.modalHeader}>
+              <div>
+                <h3 style={s.modalTitle}>{inspectingConv.name}</h3>
+                <p style={{ fontSize: 13, color: "#666", margin: "2px 0 0" }}>
+                  {inspectingConv.tenantName} • {inspectingConv.messages.length} message(s)
+                </p>
+              </div>
+              <button style={s.closeBtn} onClick={() => setInspectingConv(null)}>✕</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+              {inspectingConv.messages.map((m) => {
+                const isBot = m.senderRole === "BOT";
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      maxWidth: "80%",
+                      alignSelf: isBot ? "flex-start" : "flex-end",
+                      backgroundColor: isBot ? "#FFFFFF" : "#DCF8C6",
+                      borderRadius: 10,
+                      padding: "10px 14px",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                      border: isBot ? "1px solid #E0E0E0" : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 700, color: isBot ? "#075E54" : "#1B5E20", marginBottom: 2 }}>
+                      {m.senderName} {isBot && "🤖"}
+                    </div>
+                    <div style={{ fontSize: 14, color: "#111B21", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
+                      {m.body}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#8696A0", textAlign: "right", marginTop: 4 }}>
+                      {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ borderTop: "1px solid #F0F2F5", paddingTop: 16, display: "flex", justifyContent: "flex-end" }}>
+              <button style={s.btnPrimary} onClick={() => setInspectingConv(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
@@ -1177,7 +1480,7 @@ const s: Record<string, React.CSSProperties> = {
   cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid #F0F2F5" },
   cardTitle: { fontSize: 18, fontWeight: 700, margin: 0, color: "#111B21" },
   cardSubtitle: { fontSize: 13, color: "#667781", margin: "4px 0 0" },
-  searchInput: { padding: "8px 12px", border: "1px solid #D1D7DB", borderRadius: 8, fontSize: 13, color: "#111B21", minWidth: 200 },
+  searchInput: { padding: "8px 12px", border: "1px solid #D1D7DB", borderRadius: 8, fontSize: 13, color: "#111B21", minWidth: 220 },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
   tableHeadRow: { borderBottom: "2px solid #E9EDEF", backgroundColor: "#F7F9FA" },
   th: { textAlign: "left", padding: "12px 16px", color: "#54656F", fontWeight: 600, fontSize: 13 },

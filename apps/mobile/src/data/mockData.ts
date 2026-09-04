@@ -4,14 +4,31 @@
  */
 import type { Conversation, Message, User } from "@chatbot/shared-types";
 
-export const MOCK_CURRENT_USER: User = {
-  id: "cmtgyf6mw00027eeghx67rnmt",
+export const MOCK_ADMIN_USER: User = {
+  id: "user-admin-001",
   tenantId: "cmtgyf6k900007eegk9xui75k",
-  name: "Alice",
-  email: "admin@ofa-sports.com",
+  name: "Super Admin",
+  email: process.env.EXPO_PUBLIC_ADMIN_EMAIL || "admin@ofa-sports.com",
   role: "admin",
   createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
 };
+
+export const MOCK_DEMO_USER: User = {
+  id: "user-demo-002",
+  tenantId: "cmtgyf6k900007eegk9xui75k",
+  name: "Demo User",
+  email: process.env.EXPO_PUBLIC_DEMO_EMAIL || "demo@ofa-sports.com",
+  role: "user",
+  createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+};
+
+export const MOCK_CURRENT_USER: User = {
+  ...MOCK_DEMO_USER,
+};
+
+export function setCurrentUser(user: Partial<User>) {
+  Object.assign(MOCK_CURRENT_USER, user);
+}
 
 export const MOCK_BOT_USER: User = {
   id: "cmtgyf6n300047eegz19jfoht",

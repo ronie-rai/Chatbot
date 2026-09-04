@@ -7,13 +7,13 @@ import {
   TextInput,
   TouchableOpacity,
   StatusBar,
-  ActivityIndicator,
+  Alert,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { ConversationListItem } from "../components/ConversationListItem";
 import { NewConversationModal } from "../components/NewConversationModal";
-import { Colors, Fonts, Spacing } from "../theme/tokens";
+import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
 import { MOCK_CONVERSATIONS, MOCK_CURRENT_USER } from "../data/mockData";
 import { getConversations, createConversation } from "../api/client";
 import type { Conversation } from "@chatbot/shared-types";
@@ -25,6 +25,45 @@ export function ConversationListScreen({ navigation }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewChatModalVisible, setIsNewChatModalVisible] = useState(false);
+
+  const isAdmin = MOCK_CURRENT_USER.role === "admin";
+
+  // Configure navigation header options
+  useEffect(() => {
+    navigation.setOptions({
+      title: "OFA Chatbot",
+      headerRight: () => (
+        <View style={styles.headerRightContainer}>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.adminHeaderBtn}
+              onPress={() => navigation.navigate("Admin")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.adminHeaderBtnText}>👑 Admin</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.logoutHeaderBtn}
+            onPress={() => {
+              Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Sign Out",
+                  style: "destructive",
+                  onPress: () => navigation.replace("Login"),
+                },
+              ]);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.logoutHeaderBtnText}>Exit</Text>
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, isAdmin]);
 
   useEffect(() => {
     let mounted = true;
@@ -38,7 +77,9 @@ export function ConversationListScreen({ navigation }: Props) {
         if (mounted) setIsLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleCreateNewConversation = async (name: string, kind: "ai" | "direct" | "group") => {
@@ -85,7 +126,30 @@ export function ConversationListScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar backgroundColor={Colors.primary} barStyle="light-content" />
+      <StatusBar backgroundColor={Colors.headerBackground} barStyle="light-content" />
+
+      {/* Admin Panel Quick Banner */}
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.adminBanner}
+          onPress={() => navigation.navigate("Admin")}
+          activeOpacity={0.85}
+        >
+          <View style={styles.adminBannerLeft}>
+            <Text style={styles.adminBannerEmoji}>👑</Text>
+            <View>
+              <View style={styles.adminBannerTitleRow}>
+                <Text style={styles.adminBannerTitle}>Super Admin Dashboard</Text>
+                <View style={styles.liveDot} />
+              </View>
+              <Text style={styles.adminBannerSubtitle}>
+                Manage AI prompts, users & Google Sheets
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.adminBannerArrow}>Open →</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -137,6 +201,78 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.listBackground,
+  },
+  headerRightContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  adminHeaderBtn: {
+    backgroundColor: "#FFD700",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+  },
+  adminHeaderBtnText: {
+    color: "#333333",
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "800",
+  },
+  logoutHeaderBtn: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+  },
+  logoutHeaderBtnText: {
+    color: Colors.textLight,
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "700",
+  },
+  adminBanner: {
+    backgroundColor: "#FFF8E1",
+    borderBottomWidth: 1,
+    borderBottomColor: "#FFE082",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm + 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  adminBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    flex: 1,
+  },
+  adminBannerEmoji: {
+    fontSize: 24,
+  },
+  adminBannerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  adminBannerTitle: {
+    fontSize: Fonts.sizes.sm,
+    fontWeight: "700",
+    color: "#E65100",
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#2E7D32",
+  },
+  adminBannerSubtitle: {
+    fontSize: 11,
+    color: "#F57C00",
+    marginTop: 1,
+  },
+  adminBannerArrow: {
+    fontSize: Fonts.sizes.sm,
+    fontWeight: "800",
+    color: "#E65100",
   },
   searchContainer: {
     backgroundColor: Colors.headerBackground,

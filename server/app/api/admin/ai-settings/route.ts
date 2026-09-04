@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import Groq from "groq-sdk";
+import { verifyAdminToken } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const [dbApiKey, dbModel, dbPrompt] = await Promise.all([
       prisma.systemSetting.findUnique({ where: { key: "GROQ_API_KEY" } }),
@@ -48,6 +57,14 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const auth = verifyAdminToken(request);
+  if (!auth.valid) {
+    return NextResponse.json(
+      { ok: false, error: { code: "UNAUTHORIZED", message: auth.error || "Admin authentication required" } },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { apiKey, model, systemPrompt, testConnection } = body as {
