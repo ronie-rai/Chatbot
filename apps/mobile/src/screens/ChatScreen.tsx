@@ -18,18 +18,28 @@ import { ChatBubble } from "../components/ChatBubble";
 import { TypingDots } from "../components/TypingDots";
 import { AttachmentModal } from "../components/AttachmentModal";
 import { EmojiPickerModal } from "../components/EmojiPickerModal";
+import { TemplateFormModal } from "../components/TemplateFormModal";
 import { PaperclipIcon, SmileyIcon, MicIcon, SendIcon, TrashIcon } from "../components/Icons";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
 import { MOCK_CURRENT_USER, MOCK_BOT_USER, MOCK_MESSAGES } from "../data/mockData";
-import { getMessages, sendMessage, markMessageRead, uploadMediaFile, type SendMessageOptions } from "../api/client";
+import {
+  getMessages,
+  sendMessage,
+  markMessageRead,
+  uploadMediaFile,
+  getChatTemplates,
+  submitTemplateForm,
+  DEFAULT_FALLBACK_TEMPLATES,
+  type SendMessageOptions,
+} from "../api/client";
 import { useSocket } from "../hooks/useSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { pickFile, formatDuration, type FilePickerType } from "../utils/filePicker";
-import type { Message, MessageStatus } from "@chatbot/shared-types";
+import type { Message, MessageStatus, ChatTemplateItem } from "@chatbot/shared-types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Chat">;
 
-export function ChatScreen({ route }: Props) {
+export function ChatScreen({ route, navigation }: Props) {
   const { conversationId } = route.params;
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
@@ -38,6 +48,8 @@ export function ChatScreen({ route }: Props) {
   const [attachmentModalVisible, setAttachmentModalVisible] = useState(false);
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [templates, setTemplates] = useState<ChatTemplateItem[]>(DEFAULT_FALLBACK_TEMPLATES);
+  const [activeTemplateForModal, setActiveTemplateForModal] = useState<ChatTemplateItem | null>(null);
 
   const listRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,6 +73,21 @@ export function ChatScreen({ route }: Props) {
       Alert.alert("Microphone Notice", recordingError);
     }
   }, [recordingError]);
+
+  // Set up header with prominent dashboard link
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          style={styles.headerDashboardBtn}
+          onPress={() => navigation.navigate("Dashboard")}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.headerDashboardBtnText}>📊 Dashboard</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   // ── Last message timestamp for offline catch-up ──────────────────────────
   const lastMessageAt = messages.length > 0
@@ -91,6 +118,51 @@ export function ChatScreen({ route }: Props) {
       markMessageRead(conversationId, lastBotMsg.id);
     }
   }, [messages]);
+
+  // ── Load Chat Templates for Interactive Forms ───────────────────────────
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const fetched = await getChatTemplates(MOCK_CURRENT_USER.tenantId);
+        if (mounted && fetched && fetched.length > 0) {
+          setTemplates(fetched);
+        }
+      } catch {
+        // Fall back to pre-configured templates
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // ── Handle Slide-Up Interactive Template Form Submission ────────────────
+  const handleFormSubmit = async (formData: Record<string, string>) => {
+    if (!activeTemplateForModal) return;
+    try {
+      const res = await submitTemplateForm({
+        conversationId,
+        tenantId: MOCK_CURRENT_USER.tenantId,
+        command: activeTemplateForModal.command,
+        senderId: MOCK_CURRENT_USER.id,
+        senderName: MOCK_CURRENT_USER.name,
+        formData,
+      });
+
+      if (res.message) {
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === res.message!.id);
+          if (exists) return prev;
+          return [...prev, res.message!];
+        });
+        scrollToBottom();
+      }
+      setActiveTemplateForModal(null);
+    } catch (err: any) {
+      Alert.alert("Submission Failed", err.message || "Failed to submit form");
+    }
+  };
 
   const { emitTypingStart, emitTypingStop } = useSocket({
     conversationId,
@@ -239,6 +311,18 @@ export function ChatScreen({ route }: Props) {
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
+
+    // Check if user entered a slash command for a template -> open interactive form!
+    if (text.startsWith("/")) {
+      const cmd = text.split(/\s+/)[0].toLowerCase().replace(/^\//, "");
+      const matchedTpl = templates.find((t) => t.command.toLowerCase() === cmd);
+      if (matchedTpl) {
+        setInputText("");
+        emitTypingStop();
+        setActiveTemplateForModal(matchedTpl);
+        return;
+      }
+    }
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
@@ -435,35 +519,50 @@ export function ChatScreen({ route }: Props) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.quickChipsScroll}
         >
-          {[
-            { label: "🏟️ /booking", cmd: "/booking" },
-            { label: "🏅 /membership", cmd: "/membership" },
-            { label: "⚡ /trial", cmd: "/trial" },
-            { label: "🏆 /tournament", cmd: "/tournament" },
-            { label: "🎽 /equipment", cmd: "/equipment" },
-            { label: "🏋️ /coaching", cmd: "/coaching" },
-            { label: "💬 /feedback", cmd: "/feedback" },
-            { label: "🤝 /sponsor", cmd: "/sponsor" },
-            { label: "📋 /templates", cmd: "/templates" },
-            ...(MOCK_CURRENT_USER.role === "admin"
-              ? [
-                  { label: "🛠️ /create", cmd: "/create ", isAdmin: true },
-                  { label: "✏️ /modify", cmd: "/modify ", isAdmin: true },
-                  { label: "🗑️ /delete", cmd: "/delete ", isAdmin: true },
-                ]
-              : []),
-          ].map((item) => (
+          {templates.map((item) => (
             <TouchableOpacity
-              key={item.cmd}
-              style={[styles.quickChip, item.isAdmin && styles.quickChipAdmin]}
-              onPress={() => setInputText(item.cmd)}
+              key={item.command}
+              style={styles.quickChip}
+              onPress={() => setActiveTemplateForModal(item)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.quickChipText, item.isAdmin && styles.quickChipAdminText]}>
-                {item.label}
+              <Text style={styles.quickChipText}>
+                {item.icon || "📋"} /{item.command}
               </Text>
             </TouchableOpacity>
           ))}
+
+          {MOCK_CURRENT_USER.role === "admin" && (
+            <>
+              <TouchableOpacity
+                style={[styles.quickChip, styles.quickChipAdmin]}
+                onPress={() => setInputText("/create ")}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.quickChipText, styles.quickChipAdminText]}>
+                  🛠️ /create
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickChip, styles.quickChipAdmin]}
+                onPress={() => setInputText("/modify ")}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.quickChipText, styles.quickChipAdminText]}>
+                  ✏️ /modify
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickChip, styles.quickChipAdmin]}
+                onPress={() => setInputText("/delete ")}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.quickChipText, styles.quickChipAdminText]}>
+                  🗑️ /delete
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </ScrollView>
       </View>
 
@@ -574,6 +673,15 @@ export function ChatScreen({ route }: Props) {
         onSelectEmoji={(emoji) => {
           setInputText((prev) => prev + emoji);
         }}
+      />
+
+      {/* Slide-Up In-Chat Interactive Template Form Modal */}
+      <TemplateFormModal
+        visible={!!activeTemplateForModal}
+        template={activeTemplateForModal}
+        onClose={() => setActiveTemplateForModal(null)}
+        onSubmit={handleFormSubmit}
+        defaultUserName={MOCK_CURRENT_USER.name}
       />
     </KeyboardAvoidingView>
   );
@@ -760,6 +868,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
+  },
+  headerDashboardBtn: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginRight: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  headerDashboardBtnText: {
+    color: "#075E54",
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "800",
   },
 });
 

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <style>
+      .ofa-athletic {
+        font-family: 'Impact', 'Arial Black', -apple-system, sans-serif;
+        font-weight: 900;
+        text-anchor: middle;
+        fill: #000000;
+        stroke: #FFFFFF;
+        stroke-width: 14;
+        paint-order: stroke fill;
+      }
+      .ofa-inner {
+        font-family: 'Impact', 'Arial Black', -apple-system, sans-serif;
+        font-weight: 900;
+        text-anchor: middle;
+        fill: #000000;
+        stroke: #FFFFFF;
+        stroke-width: 3;
+      }
+      .sub-text {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-weight: 900;
+        text-anchor: middle;
+        letter-spacing: 0.28em;
+      }
+    </style>
+    <!-- Rounded squircle clip -->
+    <clipPath id="squircleClip">
+      <rect x="16" y="16" width="480" height="480" rx="96" ry="96" />
+    </clipPath>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="#000000" />
+  
+  <!-- Outer Outline Ring -->
+  <rect x="24" y="24" width="464" height="464" rx="88" ry="88" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-opacity="0.3" />
+
+  <!-- OFA Big Monogram with Athletic Dual Outline -->
+  <text x="256" y="270" font-size="210" class="ofa-athletic">OFA</text>
+  <text x="256" y="270" font-size="210" class="ofa-inner">OFA</text>
+
+  <!-- SPORTS in White Tracked Typography -->
+  <text x="262" y="360" font-size="52" fill="#FFFFFF" class="sub-text">SPORTS</text>
+
+  <!-- FOUNDATION in Gold/White Accent -->
+  <text x="262" y="420" font-size="36" fill="#E2E8F0" class="sub-text" opacity="0.95">FOUNDATION</text>
+</svg>

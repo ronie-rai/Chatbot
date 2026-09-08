@@ -143,3 +143,43 @@ export interface InsertSheetRowInput {
   conversationId: string;
   rawMessage: string;
 }
+
+// ─── Chat Templates ───────────────────────────────────────────────────────────
+
+export type FieldDataType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "float"
+  | "phone"
+  | "email"
+  | "date"
+  | "time"
+  | "dropdown"
+  | "choice"
+  | "boolean";
+
+export interface TemplateField {
+  key: string;
+  label: string;
+  required: boolean;
+  type: FieldDataType;
+  placeholder?: string;
+  options?: string[]; // for dropdown / choice
+  defaultValue?: string;
+}
+
+export interface ChatTemplateItem {
+  id: string;
+  tenantId: string;
+  command: string;
+  name: string;
+  description: string | null;
+  sheetName: string;
+  icon: string | null;
+  fields: TemplateField[];
+  promptMessage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

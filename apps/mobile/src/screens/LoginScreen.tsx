@@ -10,11 +10,12 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Image,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
-import { getEffectiveBaseUrl, setCustomBaseUrl } from "../api/client";
+import { getEffectiveBaseUrl, setCustomBaseUrl, setAdminToken } from "../api/client";
 import { MOCK_ADMIN_USER, MOCK_DEMO_USER, setCurrentUser } from "../data/mockData";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
@@ -76,6 +77,9 @@ export function LoginScreen({ navigation }: Props) {
       }
 
       // Successful server-side authentication
+      if (json.data?.adminToken) {
+        setAdminToken(json.data.adminToken);
+      }
       if (json.data?.user) {
         setCurrentUser({
           id: json.data.user.id,
@@ -96,6 +100,7 @@ export function LoginScreen({ navigation }: Props) {
         cleanEmail === DEMO_EMAIL.toLowerCase() && password === DEMO_PASSWORD;
 
       if (isAdminMatch) {
+        setAdminToken("offline-sa-token");
         setCurrentUser(MOCK_ADMIN_USER);
         navigation.replace("ConversationList");
       } else if (isDemoMatch) {
@@ -104,7 +109,7 @@ export function LoginScreen({ navigation }: Props) {
       } else {
         Alert.alert(
           "Sign In Failed",
-          "Invalid email or password.\n\nUse Demo credentials or Admin credentials ruled by .env."
+          "Invalid email or password.\n\nUse App User credentials or Admin credentials ruled by .env."
         );
       }
     } finally {
@@ -119,9 +124,15 @@ export function LoginScreen({ navigation }: Props) {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>💬</Text>
-        <Text style={styles.title}>OFA Chatbot</Text>
-        <Text style={styles.subtitle}>OFA Sports AI Assistant</Text>
+        <View style={styles.logoBadgeContainer}>
+          <Image
+            source={require("../../assets/ofa-logo.png")}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.title}>OFA Sports Foundation</Text>
+        <Text style={styles.subtitle}>Sports AI Assistant &amp; Facility Hub</Text>
       </View>
 
       {/* Form */}
@@ -134,7 +145,7 @@ export function LoginScreen({ navigation }: Props) {
             activeOpacity={0.8}
           >
             <Text style={[styles.roleBtnText, roleMode === "demo" && styles.roleBtnTextActive]}>
-              👤 Demo User
+              👤 App User
             </Text>
           </TouchableOpacity>
 
@@ -191,7 +202,7 @@ export function LoginScreen({ navigation }: Props) {
           <Text style={styles.hintText}>
             {roleMode === "admin"
               ? "🔑 Admin password ruled by SUPER_ADMIN_PASSWORD in .env"
-              : "💡 Demo User: separate credentials for client testing"}
+              : "💡 App User: access sports chat, bookings & services"}
           </Text>
         </View>
 
@@ -205,23 +216,9 @@ export function LoginScreen({ navigation }: Props) {
             <ActivityIndicator color={Colors.textLight} />
           ) : (
             <Text style={styles.loginBtnText}>
-              {roleMode === "admin" ? "Sign In as Admin →" : "Sign In as Demo User →"}
+              {roleMode === "admin" ? "Sign In as Admin →" : "Sign In →"}
             </Text>
           )}
-        </TouchableOpacity>
-
-        {/* Server URL Config Trigger */}
-        <TouchableOpacity
-          style={styles.serverConfigBtn}
-          onPress={() => {
-            setServerUrlInput(getEffectiveBaseUrl());
-            setShowServerModal(true);
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.serverConfigText}>
-            ⚙️ Server: {getEffectiveBaseUrl()}
-          </Text>
         </TouchableOpacity>
       </View>
 
@@ -289,11 +286,31 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: "center",
-    marginBottom: Spacing.xl * 1.5,
+    marginBottom: Spacing.xl,
   },
-  logo: { fontSize: 60, marginBottom: Spacing.sm },
-  title: { fontSize: 30, fontWeight: "800", color: Colors.textLight, letterSpacing: -0.5 },
-  subtitle: { fontSize: Fonts.sizes.md, color: "rgba(255,255,255,0.75)", marginTop: Spacing.xs },
+  logoBadgeContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: 20,
+    backgroundColor: "#000000",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.8)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.sm,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    overflow: "hidden",
+  },
+  logoImage: {
+    width: 80,
+    height: 80,
+  },
+  title: { fontSize: 26, fontWeight: "800", color: Colors.textLight, letterSpacing: -0.5, textAlign: "center" },
+  subtitle: { fontSize: Fonts.sizes.sm, color: "rgba(255,255,255,0.8)", marginTop: Spacing.xs, textAlign: "center" },
   form: {
     width: "100%",
     backgroundColor: Colors.listBackground,

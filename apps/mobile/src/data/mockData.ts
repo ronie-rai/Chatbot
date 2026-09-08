@@ -16,7 +16,7 @@ export const MOCK_ADMIN_USER: User = {
 export const MOCK_DEMO_USER: User = {
   id: "user-demo-002",
   tenantId: "cmtgyf6k900007eegk9xui75k",
-  name: "Demo User",
+  name: "App User",
   email: process.env.EXPO_PUBLIC_DEMO_EMAIL || "demo@ofa-sports.com",
   role: "user",
   createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),

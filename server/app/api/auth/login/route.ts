@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
+import { createAdminToken } from "@/lib/adminAuth";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.NEXTAUTH_SECRET ?? "dev-secret-change-in-production"
@@ -134,10 +135,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       .setExpirationTime("7d")
       .sign(JWT_SECRET);
 
+    const isAdminUser = user.role.toUpperCase() === "ADMIN" || isEnvAdmin;
+    const adminToken = isAdminUser ? createAdminToken(user.email) : undefined;
+
     return NextResponse.json({
       ok: true,
       data: {
         token,
+        adminToken,
         user: {
           id: user.id,
           name: user.name,

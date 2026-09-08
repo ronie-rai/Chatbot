@@ -6,12 +6,30 @@ import {
   getGroqModel,
 } from "@/lib/ai";
 
+export type FieldDataType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "float"
+  | "phone"
+  | "email"
+  | "date"
+  | "time"
+  | "dropdown"
+  | "choice"
+  | "boolean";
+
 export interface TemplateField {
   key: string;
   label: string;
   required: boolean;
-  type?: "text" | "number" | "date" | "phone" | "choice";
+  type?: FieldDataType;
   placeholder?: string;
+  options?: string[];
+  defaultValue?: string;
+  optionSource?: "manual" | "table";
+  linkedTemplateCommand?: string;
+  linkedFieldKey?: string;
 }
 
 export interface TemplateInput {
@@ -30,18 +48,36 @@ export const DEFAULT_SPORTS_TEMPLATES: TemplateInput[] = [
   {
     command: "booking",
     name: "Facility & Court Booking",
-    description: "Reserve badminton courts, football turf, cricket nets, or gym slots",
+    description: "Reserve tennis courts, badminton courts, football turf, or gym slots",
     sheetName: "Facility Bookings",
     icon: "🏟️",
     fields: [
-      { key: "name", label: "Full Name", required: true, type: "text" },
-      { key: "phone", label: "Phone Number", required: true, type: "phone" },
-      { key: "sport", label: "Sport / Facility", required: true, type: "text", placeholder: "Badminton, Football Turf, Tennis" },
-      { key: "date", label: "Booking Date", required: true, type: "date", placeholder: "YYYY-MM-DD or Tomorrow" },
-      { key: "time_slot", label: "Time Slot", required: true, type: "text", placeholder: "e.g. 6:00 PM - 7:00 PM" },
-      { key: "duration", label: "Duration", required: false, type: "text", placeholder: "e.g. 1 hour" },
+      { key: "phone", label: "Phone Number", required: true, type: "phone", placeholder: "+91 98765 43210" },
+      { key: "name", label: "Full Name", required: true, type: "text", placeholder: "e.g. Rohan Sharma" },
+      {
+        key: "sport",
+        label: "Sport / Facility",
+        required: true,
+        type: "dropdown",
+        placeholder: "Select Court or Facility",
+        options: [
+          "Tennis - Court 1",
+          "Tennis - Court 2",
+          "Tennis - Court 3",
+          "Tennis - Court 4",
+          "Badminton - Court 1",
+          "Badminton - Court 2",
+          "Football Turf",
+          "Cricket Nets",
+          "Basketball Court",
+          "Gym & Fitness Area",
+        ],
+      },
+      { key: "date", label: "Booking Date", required: true, type: "date", placeholder: "Select Date" },
+      { key: "time_slot", label: "Time Slot", required: true, type: "time", placeholder: "Select Time Slot" },
+      { key: "duration", label: "Duration", required: false, type: "text", defaultValue: "1 Hr", placeholder: "1 Hr" },
       { key: "players", label: "No. of Players", required: false, type: "number", placeholder: "e.g. 4" },
-      { key: "notes", label: "Special Requests", required: false, type: "text" },
+      { key: "notes", label: "Special Requests", required: false, type: "textarea", placeholder: "Need rackets, balls, or coach" },
     ],
   },
   {

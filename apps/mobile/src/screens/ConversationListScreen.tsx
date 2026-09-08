@@ -14,8 +14,9 @@ import type { RootStackParamList } from "../navigation/types";
 import { ConversationListItem } from "../components/ConversationListItem";
 import { NewConversationModal } from "../components/NewConversationModal";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
-import { MOCK_CONVERSATIONS, MOCK_CURRENT_USER } from "../data/mockData";
+import { MOCK_CONVERSATIONS, MOCK_CURRENT_USER, setCurrentUser, MOCK_DEMO_USER } from "../data/mockData";
 import { getConversations, createConversation } from "../api/client";
+import { showConfirm } from "../utils/alert";
 import type { Conversation } from "@chatbot/shared-types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ConversationList">;
@@ -28,12 +29,32 @@ export function ConversationListScreen({ navigation }: Props) {
 
   const isAdmin = MOCK_CURRENT_USER.role === "admin";
 
+  const handleExit = () => {
+    showConfirm(
+      "Sign Out",
+      "Are you sure you want to sign out and exit?",
+      () => {
+        setCurrentUser(MOCK_DEMO_USER);
+        navigation.replace("Login");
+      }
+    );
+  };
+
   // Configure navigation header options
   useEffect(() => {
     navigation.setOptions({
       title: "OFA Chatbot",
       headerRight: () => (
         <View style={styles.headerRightContainer}>
+          {/* Prominent Dashboard Link for All Users */}
+          <TouchableOpacity
+            style={styles.dashboardHeaderBtn}
+            onPress={() => navigation.navigate("Dashboard")}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.dashboardHeaderBtnText}>📊 Dashboard</Text>
+          </TouchableOpacity>
+
           {isAdmin && (
             <TouchableOpacity
               style={styles.adminHeaderBtn}
@@ -46,16 +67,7 @@ export function ConversationListScreen({ navigation }: Props) {
 
           <TouchableOpacity
             style={styles.logoutHeaderBtn}
-            onPress={() => {
-              Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Sign Out",
-                  style: "destructive",
-                  onPress: () => navigation.replace("Login"),
-                },
-              ]);
-            }}
+            onPress={handleExit}
             activeOpacity={0.7}
           >
             <Text style={styles.logoutHeaderBtnText}>Exit</Text>
@@ -206,6 +218,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
+  },
+  dashboardHeaderBtn: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  dashboardHeaderBtnText: {
+    color: "#075E54",
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "800",
   },
   adminHeaderBtn: {
     backgroundColor: "#FFD700",

@@ -5,6 +5,7 @@ import { LoginScreen } from "../screens/LoginScreen";
 import { ConversationListScreen } from "../screens/ConversationListScreen";
 import { ChatScreen } from "../screens/ChatScreen";
 import { AdminScreen } from "../screens/AdminScreen";
+import { DashboardScreen } from "../screens/DashboardScreen";
 import { Colors, Fonts } from "../theme/tokens";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -30,6 +31,11 @@ export function RootNavigator() {
         name="ConversationList"
         component={ConversationListScreen}
         options={{ title: "OFA Chatbot", headerBackVisible: false }}
+      />
+      <Stack.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ title: "Analytics & Data Hub", headerBackVisible: true }}
       />
       <Stack.Screen
         name="Admin"

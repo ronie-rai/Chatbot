@@ -24,29 +24,68 @@ export default function HomePage(): React.ReactElement {
           boxShadow: "0 12px 32px rgba(0,0,0,0.15)",
         }}
       >
-        <div style={{ fontSize: 54, marginBottom: 12 }}>🏆</div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <img src="/ofa-logo.png" alt="OFA Sports Foundation" style={{ width: 96, height: 96, borderRadius: 20, boxShadow: "0 4px 16px rgba(0,0,0,0.2)" }} />
+        </div>
         <h1 style={{ fontSize: 26, fontWeight: 800, color: "#111B21", margin: "0 0 8px" }}>
-          OFA Chatbot Platform
+          OFA Sports Foundation
         </h1>
         <p style={{ fontSize: 14, color: "#54656F", margin: "0 0 24px" }}>
-          Intelligent multi-tenant assistant for <strong>OFA_Sports</strong> and organizations with Google Sheets sync.
+          Official AI Chat, Sports Facilities Booking &amp; Analytics Platform
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <a
-            href="/admin"
+            href="/dashboard"
             style={{
               display: "block",
-              backgroundColor: "#00A884",
+              background: "linear-gradient(135deg, #075E54 0%, #00A884 100%)",
+              color: "#FFFFFF",
+              textDecoration: "none",
+              padding: "15px 20px",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 16,
+              boxShadow: "0 4px 12px rgba(0,168,132,0.3)",
+            }}
+          >
+            📊 Open User Data &amp; Insights Dashboard →
+          </a>
+
+          <a
+            href="/ofa-sports.apk"
+            download="ofa-sports.apk"
+            style={{
+              display: "block",
+              backgroundColor: "#000000",
               color: "#FFFFFF",
               textDecoration: "none",
               padding: "14px 20px",
-              borderRadius: 8,
+              borderRadius: 10,
               fontWeight: 700,
               fontSize: 15,
+              border: "1px solid #333333",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
             }}
           >
-            Open Admin Control Panel →
+            📱 Download OFA Sports App (APK) ↓
+          </a>
+
+          <a
+            href="/admin"
+            style={{
+              display: "block",
+              backgroundColor: "#F0F2F5",
+              color: "#111B21",
+              textDecoration: "none",
+              padding: "13px 20px",
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 14,
+              border: "1px solid #CFD8DC",
+            }}
+          >
+            ⚙️ Open Super Admin Control Panel →
           </a>
 
           <a
@@ -55,13 +94,13 @@ export default function HomePage(): React.ReactElement {
             rel="noreferrer"
             style={{
               display: "block",
-              backgroundColor: "#F0F2F5",
-              color: "#111B21",
+              backgroundColor: "transparent",
+              color: "#54656F",
               textDecoration: "none",
-              padding: "12px 20px",
+              padding: "8px 20px",
               borderRadius: 8,
               fontWeight: 600,
-              fontSize: 14,
+              fontSize: 13,
             }}
           >
             Check API Health

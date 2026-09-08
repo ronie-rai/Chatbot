@@ -121,7 +121,18 @@ interface TemplateItem {
   description: string | null;
   sheetName: string;
   icon: string | null;
-  fields: Array<{ key: string; label: string; required: boolean; type?: string; placeholder?: string }>;
+  fields: Array<{
+    key: string;
+    label: string;
+    required: boolean;
+    type?: string;
+    placeholder?: string;
+    options?: string[];
+    defaultValue?: string;
+    optionSource?: "manual" | "table";
+    linkedTemplateCommand?: string;
+    linkedFieldKey?: string;
+  }>;
   promptMessage: string;
   createdAt: string;
   updatedAt: string;
@@ -350,11 +361,41 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [newTplDesc, setNewTplDesc] = useState("");
   const [newTplSheetName, setNewTplSheetName] = useState("");
   const [newTplIcon, setNewTplIcon] = useState("📋");
-  const [newTplFields, setNewTplFields] = useState<Array<{ key: string; label: string; required: boolean; type: string }>>([
+  const [newTplFields, setNewTplFields] = useState<
+    Array<{
+      key: string;
+      label: string;
+      required: boolean;
+      type: string;
+      optionsRaw?: string;
+      optionSource?: "manual" | "table";
+      linkedTemplateCommand?: string;
+      linkedFieldKey?: string;
+    }>
+  >([
     { key: "full_name", label: "Full Name", required: true, type: "text" },
     { key: "phone_number", label: "Phone Number", required: true, type: "phone" },
     { key: "details", label: "Details / Notes", required: true, type: "text" },
   ]);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateItem | null>(null);
+  const [showEditTemplateModal, setShowEditTemplateModal] = useState(false);
+  const [editTplName, setEditTplName] = useState("");
+  const [editTplDesc, setEditTplDesc] = useState("");
+  const [editTplIcon, setEditTplIcon] = useState("📋");
+  const [editTplSheetName, setEditTplSheetName] = useState("");
+  const [editTplFields, setEditTplFields] = useState<
+    Array<{
+      key: string;
+      label: string;
+      required: boolean;
+      type: string;
+      optionsRaw?: string;
+      optionSource?: "manual" | "table";
+      linkedTemplateCommand?: string;
+      linkedFieldKey?: string;
+    }>
+  >([]);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [seedingTemplates, setSeedingTemplates] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
@@ -478,11 +519,76 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const getValuesFromTable = (sourceCommand: string, sourceFieldKeyOrLabel: string): string[] => {
+    const valuesSet = new Set<string>();
+    if (!sourceCommand || !sourceFieldKeyOrLabel) return [];
+
+    const srcTpl = templates.find((t) => t.command === sourceCommand);
+    if (srcTpl && Array.isArray(srcTpl.fields)) {
+      const srcField = srcTpl.fields.find(
+        (f) => f.key === sourceFieldKeyOrLabel || f.label === sourceFieldKeyOrLabel
+      );
+      if (srcField && Array.isArray(srcField.options)) {
+        srcField.options.forEach((opt) => {
+          if (opt && typeof opt === "string" && opt.trim()) {
+            valuesSet.add(opt.trim());
+          }
+        });
+      }
+    }
+
+    if (Array.isArray(submissions)) {
+      submissions.forEach((sub) => {
+        if (
+          sub.templateCommand === sourceCommand ||
+          (srcTpl?.sheetName && sub.sheetName === srcTpl.sheetName)
+        ) {
+          const d = sub.data || {};
+          const candidateKeys = [
+            sourceFieldKeyOrLabel,
+            sourceFieldKeyOrLabel.toLowerCase(),
+            srcTpl?.fields?.find((f) => f.key === sourceFieldKeyOrLabel)?.label,
+            srcTpl?.fields?.find((f) => f.label === sourceFieldKeyOrLabel)?.key,
+          ].filter(Boolean) as string[];
+
+          for (const k of candidateKeys) {
+            const val = d[k];
+            if (typeof val === "string" && val.trim()) {
+              valuesSet.add(val.trim());
+              break;
+            }
+          }
+        }
+      });
+    }
+
+    return Array.from(valuesSet);
+  };
+
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTplCommand.trim() || !newTplName.trim()) return;
     setCreatingTemplate(true);
     try {
+      const formattedFields = newTplFields
+        .filter((f) => f.label.trim().length > 0)
+        .map((f) => {
+          const isDropdown = f.type === "dropdown" || f.type === "choice";
+          const opts = isDropdown && f.optionsRaw
+            ? f.optionsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+            : undefined;
+          return {
+            key: f.key || f.label.toLowerCase().replace(/[^a-z0-9]/g, "_"),
+            label: f.label.trim(),
+            required: f.required,
+            type: f.type || "text",
+            options: opts,
+            optionSource: f.optionSource || "manual",
+            linkedTemplateCommand: f.linkedTemplateCommand || undefined,
+            linkedFieldKey: f.linkedFieldKey || undefined,
+          };
+        });
+
       const res = await fetch("/api/admin/templates", {
         method: "POST",
         headers: authHeaders(),
@@ -492,7 +598,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           description: newTplDesc.trim() || undefined,
           sheetName: newTplSheetName.trim() || `${newTplName.trim()} Records`,
           icon: newTplIcon.trim() || "📋",
-          fields: newTplFields.filter((f) => f.label.trim().length > 0),
+          fields: formattedFields,
           autoCreateSheet: true,
         }),
       });
@@ -512,6 +618,80 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       showToast("error", "Request failed");
     } finally {
       setCreatingTemplate(false);
+    }
+  };
+
+  const handleOpenEditTemplate = (tpl: TemplateItem) => {
+    setEditingTemplate(tpl);
+    setEditTplName(tpl.name);
+    setEditTplDesc(tpl.description || "");
+    setEditTplIcon(tpl.icon || "📋");
+    setEditTplSheetName(tpl.sheetName);
+    setEditTplFields(
+      (tpl.fields || []).map((f) => ({
+        key: f.key,
+        label: f.label,
+        required: f.required ?? true,
+        type: f.type || "text",
+        optionsRaw: f.options && f.options.length > 0 ? f.options.join(", ") : "",
+        optionSource: f.optionSource || (f.linkedTemplateCommand ? "table" : "manual"),
+        linkedTemplateCommand: f.linkedTemplateCommand || "",
+        linkedFieldKey: f.linkedFieldKey || "",
+      }))
+    );
+    setShowEditTemplateModal(true);
+  };
+
+  const handleSaveEditTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTemplate) return;
+    setSavingTemplate(true);
+    try {
+      const formattedFields = editTplFields
+        .filter((f) => f.label.trim().length > 0)
+        .map((f) => {
+          const isDropdown = f.type === "dropdown" || f.type === "choice";
+          const opts = isDropdown && f.optionsRaw
+            ? f.optionsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+            : undefined;
+          return {
+            key: f.key || f.label.toLowerCase().replace(/[^a-z0-9]/g, "_"),
+            label: f.label.trim(),
+            required: f.required,
+            type: f.type || "text",
+            options: opts,
+            optionSource: f.optionSource || "manual",
+            linkedTemplateCommand: f.linkedTemplateCommand || undefined,
+            linkedFieldKey: f.linkedFieldKey || undefined,
+          };
+        });
+
+      const res = await fetch("/api/admin/templates", {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          command: editingTemplate.command,
+          name: editTplName.trim(),
+          description: editTplDesc.trim() || undefined,
+          sheetName: editTplSheetName.trim() || editingTemplate.sheetName,
+          icon: editTplIcon.trim() || "📋",
+          fields: formattedFields,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        showToast("success", `Template "/${editingTemplate.command}" updated successfully!`);
+        setShowEditTemplateModal(false);
+        setEditingTemplate(null);
+        fetchData();
+      } else {
+        showToast("error", data.error?.message || "Failed to update template");
+      }
+    } catch {
+      showToast("error", "Failed to update template");
+    } finally {
+      setSavingTemplate(false);
     }
   };
 
@@ -922,8 +1102,10 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
           </div>
           <div style={s.headerActions}>
             <span style={s.badgeLive}>Protected &amp; Verified</span>
+            <a href="/dashboard" style={s.exitLink}>📊 Dashboard</a>
+            <a href="/" style={s.exitLink}>💬 Exit to Chats</a>
             <a href="/api/health" target="_blank" style={s.healthLink}>API Health</a>
-            <button style={s.logoutBtn} onClick={onLogout}>Sign Out</button>
+            <button style={s.logoutBtn} onClick={onLogout}>Exit / Sign Out</button>
           </div>
         </div>
       </header>
@@ -1184,20 +1366,35 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                                 <div style={{ fontSize: 11, fontWeight: 700, color: "#8696A0", textTransform: "uppercase", marginBottom: 6 }}>
                                   Columns ({t.fields?.length || 0}):
                                 </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                   {(t.fields || []).map((f: any, idx: number) => (
                                     <span
                                       key={idx}
                                       style={{
                                         backgroundColor: "#F5F6F6",
                                         border: "1px solid #E0E0E0",
-                                        borderRadius: 4,
-                                        padding: "2px 6px",
+                                        borderRadius: 6,
+                                        padding: "3px 8px",
                                         fontSize: 11,
                                         color: "#111B21",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 5,
                                       }}
                                     >
-                                      {f.label}{f.required ? " *" : ""}
+                                      <span style={{ fontWeight: 600 }}>{f.label}{f.required ? " *" : ""}</span>
+                                      <span
+                                        style={{
+                                          fontSize: 10,
+                                          fontWeight: 700,
+                                          backgroundColor: f.type === "phone" ? "#E8F5E9" : f.type === "dropdown" ? "#EDE7F6" : "#E3F2FD",
+                                          color: f.type === "phone" ? "#2E7D32" : f.type === "dropdown" ? "#512DA8" : "#1565C0",
+                                          padding: "1px 5px",
+                                          borderRadius: 4,
+                                        }}
+                                      >
+                                        {f.type || "text"}
+                                      </span>
                                     </span>
                                   ))}
                                 </div>
@@ -1208,12 +1405,20 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                               <span style={{ fontSize: 11, color: "#8696A0" }}>
                                 Preserved in Google Sheets
                               </span>
-                              <button
-                                style={{ ...s.btnDangerSmall, padding: "4px 8px", fontSize: 12 }}
-                                onClick={() => handleDeleteTemplate(t.command, t.sheetName)}
-                              >
-                                Delete
-                              </button>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  style={{ ...s.btnSmall, padding: "4px 10px", fontSize: 12, backgroundColor: "#FFFFFF" }}
+                                  onClick={() => handleOpenEditTemplate(t)}
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  style={{ ...s.btnDangerSmall, padding: "4px 8px", fontSize: 12 }}
+                                  onClick={() => handleDeleteTemplate(t.command, t.sheetName)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -2044,10 +2249,10 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                 />
               </div>
 
-              {/* Dynamic Column Builder */}
+              {/* Dynamic Column Builder with Data Types & Dropdowns */}
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <label style={{ ...s.label, marginBottom: 0 }}>Template Columns / Headers</label>
+                  <label style={{ ...s.label, marginBottom: 0 }}>Template Columns / Headers &amp; Data Types</label>
                   <button
                     type="button"
                     style={{ ...s.btnSecondary, padding: "4px 8px", fontSize: 12 }}
@@ -2062,43 +2267,205 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                   </button>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 240, overflowY: "auto", paddingRight: 4 }}>
                   {newTplFields.map((field, idx) => (
-                    <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input
-                        style={{ ...s.input, flex: 2, padding: "6px 8px", fontSize: 13 }}
-                        placeholder="Column Name (e.g. Age Group)"
-                        value={field.label}
-                        onChange={(e) => {
-                          const updated = [...newTplFields];
-                          updated[idx].label = e.target.value;
-                          updated[idx].key = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "_");
-                          setNewTplFields(updated);
-                        }}
-                        required
-                      />
-                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#54656F" }}>
+                    <div key={idx} style={{ border: "1px solid #E0E0E0", borderRadius: 8, padding: 8, backgroundColor: "#FAFAFA" }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                         <input
-                          type="checkbox"
-                          checked={field.required}
+                          style={{ ...s.input, flex: 2, padding: "6px 8px", fontSize: 13 }}
+                          placeholder="Column Name (e.g. Court / Sport)"
+                          value={field.label}
                           onChange={(e) => {
                             const updated = [...newTplFields];
-                            updated[idx].required = e.target.checked;
+                            updated[idx].label = e.target.value;
+                            updated[idx].key = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "_");
                             setNewTplFields(updated);
                           }}
+                          required
                         />
-                        Req
-                      </label>
-                      {newTplFields.length > 1 && (
-                        <button
-                          type="button"
-                          style={{ background: "transparent", border: "none", color: "#C62828", cursor: "pointer", fontSize: 14 }}
-                          onClick={() => {
-                            setNewTplFields(newTplFields.filter((_, i) => i !== idx));
+                        <select
+                          style={{ ...s.input, flex: 1.5, padding: "6px 8px", fontSize: 12, backgroundColor: "#FFFFFF" }}
+                          value={field.type || "text"}
+                          onChange={(e) => {
+                            const updated = [...newTplFields];
+                            updated[idx].type = e.target.value;
+                            setNewTplFields(updated);
                           }}
                         >
-                          ✕
-                        </button>
+                          <option value="text">Text (Char)</option>
+                          <option value="textarea">Textarea (Long)</option>
+                          <option value="number">Number (Int)</option>
+                          <option value="float">Decimal (Float)</option>
+                          <option value="phone">Phone (Key 🔑)</option>
+                          <option value="email">Email Address</option>
+                          <option value="date">Date (Calendar)</option>
+                          <option value="time">Time (Grid)</option>
+                          <option value="dropdown">Dropdown List</option>
+                          <option value="boolean">Boolean (Yes/No)</option>
+                        </select>
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#54656F", whiteSpace: "nowrap" }}>
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={(e) => {
+                              const updated = [...newTplFields];
+                              updated[idx].required = e.target.checked;
+                              setNewTplFields(updated);
+                            }}
+                          />
+                          Req
+                        </label>
+                        {newTplFields.length > 1 && (
+                          <button
+                            type="button"
+                            style={{ background: "transparent", border: "none", color: "#C62828", cursor: "pointer", fontSize: 14 }}
+                            onClick={() => {
+                              setNewTplFields(newTplFields.filter((_, i) => i !== idx));
+                            }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {(field.type === "dropdown" || field.type === "choice") && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", backgroundColor: "#F7F9FA", borderRadius: 6, border: "1px solid #E0E0E0" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#54656F" }}>Options Source:</span>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button
+                                type="button"
+                                style={{
+                                  padding: "3px 8px",
+                                  fontSize: 11,
+                                  borderRadius: 12,
+                                  border: "none",
+                                  cursor: "pointer",
+                                  backgroundColor: (field.optionSource || "manual") === "manual" ? "#075E54" : "#E0E0E0",
+                                  color: (field.optionSource || "manual") === "manual" ? "#FFFFFF" : "#54656F",
+                                  fontWeight: 600,
+                                }}
+                                onClick={() => {
+                                  const updated = [...newTplFields];
+                                  updated[idx].optionSource = "manual";
+                                  setNewTplFields(updated);
+                                }}
+                              >
+                                ✏️ Manual
+                              </button>
+                              <button
+                                type="button"
+                                style={{
+                                  padding: "3px 8px",
+                                  fontSize: 11,
+                                  borderRadius: 12,
+                                  border: "none",
+                                  cursor: "pointer",
+                                  backgroundColor: field.optionSource === "table" ? "#075E54" : "#E0E0E0",
+                                  color: field.optionSource === "table" ? "#FFFFFF" : "#54656F",
+                                  fontWeight: 600,
+                                }}
+                                onClick={() => {
+                                  const updated = [...newTplFields];
+                                  updated[idx].optionSource = "table";
+                                  if (!updated[idx].linkedTemplateCommand && templates.length > 0) {
+                                    updated[idx].linkedTemplateCommand = templates[0].command;
+                                    const firstField = (templates[0].fields || [])[0];
+                                    if (firstField) {
+                                      updated[idx].linkedFieldKey = firstField.key || firstField.label;
+                                    }
+                                  }
+                                  setNewTplFields(updated);
+                                }}
+                              >
+                                🔗 From Other Table
+                              </button>
+                            </div>
+                          </div>
+
+                          {(field.optionSource || "manual") === "manual" ? (
+                            <input
+                              style={{ ...s.input, padding: "5px 8px", fontSize: 11, backgroundColor: "#FFFFFF", width: "100%", marginBottom: 0 }}
+                              placeholder="Comma-separated options (e.g. Option 1, Option 2, Option 3)"
+                              value={field.optionsRaw || ""}
+                              onChange={(e) => {
+                                const updated = [...newTplFields];
+                                updated[idx].optionsRaw = e.target.value;
+                                setNewTplFields(updated);
+                              }}
+                            />
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <select
+                                  style={{ ...s.input, flex: 1, padding: "4px 8px", fontSize: 11, backgroundColor: "#FFFFFF", marginBottom: 0 }}
+                                  value={field.linkedTemplateCommand || ""}
+                                  onChange={(e) => {
+                                    const updated = [...newTplFields];
+                                    updated[idx].linkedTemplateCommand = e.target.value;
+                                    const foundTpl = templates.find((t) => t.command === e.target.value);
+                                    const firstF = (foundTpl?.fields || [])[0];
+                                    if (firstF) {
+                                      updated[idx].linkedFieldKey = firstF.key || firstF.label;
+                                    }
+                                    setNewTplFields(updated);
+                                  }}
+                                >
+                                  {templates.map((tpl) => (
+                                    <option key={tpl.command} value={tpl.command}>
+                                      {tpl.icon || "📋"} {tpl.name} (/{tpl.command})
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  style={{ ...s.input, flex: 1, padding: "4px 8px", fontSize: 11, backgroundColor: "#FFFFFF", marginBottom: 0 }}
+                                  value={field.linkedFieldKey || ""}
+                                  onChange={(e) => {
+                                    const updated = [...newTplFields];
+                                    updated[idx].linkedFieldKey = e.target.value;
+                                    setNewTplFields(updated);
+                                  }}
+                                >
+                                  {(templates.find((t) => t.command === (field.linkedTemplateCommand || templates[0]?.command))?.fields || []).map((f, fIdx) => (
+                                    <option key={fIdx} value={f.key || f.label}>
+                                      {f.label} ({f.type || "text"})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              {(() => {
+                                const extracted = getValuesFromTable(
+                                  field.linkedTemplateCommand || templates[0]?.command || "",
+                                  field.linkedFieldKey || ""
+                                );
+                                return (
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+                                    <span style={{ color: "#54656F" }}>
+                                      {extracted.length > 0 ? (
+                                        <>Found <b>{extracted.length}</b> values: {extracted.slice(0, 3).join(", ")}{extracted.length > 3 ? "..." : ""}</>
+                                      ) : (
+                                        <i style={{ color: "#8696A0" }}>No options or submissions found</i>
+                                      )}
+                                    </span>
+                                    {extracted.length > 0 && (
+                                      <button
+                                        type="button"
+                                        style={{ padding: "4px 10px", fontSize: 11, borderRadius: 4, backgroundColor: "#00A884", color: "#FFFFFF", border: "none", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}
+                                        onClick={() => {
+                                          const updated = [...newTplFields];
+                                          updated[idx].optionsRaw = extracted.join(", ");
+                                          setNewTplFields(updated);
+                                          showToast("success", `Imported ${extracted.length} values from table!`);
+                                        }}
+                                      >
+                                        ✓ Import {extracted.length} Values
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -2111,6 +2478,302 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
                 </button>
                 <button type="submit" style={s.btnPrimary} disabled={creatingTemplate}>
                   {creatingTemplate ? "Creating Sheet..." : "Create Template & Sheet"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT TEMPLATE MODAL */}
+      {showEditTemplateModal && editingTemplate && (
+        <div style={s.modalOverlay}>
+          <div style={{ ...s.modalCard, maxWidth: 600 }}>
+            <div style={s.modalHeader}>
+              <div>
+                <h3 style={s.modalTitle}>Modify Template &amp; Fields</h3>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#00A884", fontWeight: 600 }}>
+                  /{editingTemplate.command} • Tab: {editingTemplate.sheetName}
+                </p>
+              </div>
+              <button style={s.closeBtn} onClick={() => setShowEditTemplateModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleSaveEditTemplate}>
+              <p style={{ fontSize: 12, color: "#667781", marginBottom: 14 }}>
+                Admin can modify field data types (text, int, float, phone, calendar date, time grid, dropdown courts, boolean). Newly added columns are automatically appended to Google Sheets row 1.
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 10 }}>
+                <div style={s.formGroup}>
+                  <label style={s.label}>Display Name *</label>
+                  <input
+                    style={s.input}
+                    value={editTplName}
+                    onChange={(e) => setEditTplName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div style={s.formGroup}>
+                  <label style={s.label}>Icon</label>
+                  <input
+                    style={{ ...s.input, textAlign: "center", fontSize: 18 }}
+                    value={editTplIcon}
+                    onChange={(e) => setEditTplIcon(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Google Sheet Tab Name</label>
+                <input
+                  style={s.input}
+                  value={editTplSheetName}
+                  onChange={(e) => setEditTplSheetName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.label}>Description</label>
+                <input
+                  style={s.input}
+                  value={editTplDesc}
+                  onChange={(e) => setEditTplDesc(e.target.value)}
+                />
+              </div>
+
+              {/* Dynamic Field & Data Type Configurator */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label style={{ ...s.label, marginBottom: 0 }}>Form Fields &amp; Data Types</label>
+                  <button
+                    type="button"
+                    style={{ ...s.btnSecondary, padding: "4px 8px", fontSize: 12 }}
+                    onClick={() => {
+                      setEditTplFields([
+                        ...editTplFields,
+                        { key: `col_${Date.now().toString().slice(-4)}`, label: "", required: true, type: "text" },
+                      ]);
+                    }}
+                  >
+                    + Add Field
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>
+                  {editTplFields.map((field, idx) => (
+                    <div key={idx} style={{ border: "1px solid #E0E0E0", borderRadius: 8, padding: 8, backgroundColor: "#FAFAFA" }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          style={{ ...s.input, flex: 2, padding: "6px 8px", fontSize: 13 }}
+                          placeholder="Field Label (e.g. Sport / Facility)"
+                          value={field.label}
+                          onChange={(e) => {
+                            const updated = [...editTplFields];
+                            updated[idx].label = e.target.value;
+                            updated[idx].key = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "_");
+                            setEditTplFields(updated);
+                          }}
+                          required
+                        />
+                        <select
+                          style={{ ...s.input, flex: 1.5, padding: "6px 8px", fontSize: 12, backgroundColor: "#FFFFFF" }}
+                          value={field.type || "text"}
+                          onChange={(e) => {
+                            const updated = [...editTplFields];
+                            updated[idx].type = e.target.value;
+                            setEditTplFields(updated);
+                          }}
+                        >
+                          <option value="text">Text (Char)</option>
+                          <option value="textarea">Textarea (Long)</option>
+                          <option value="number">Number (Int)</option>
+                          <option value="float">Decimal (Float)</option>
+                          <option value="phone">Phone (Key 🔑)</option>
+                          <option value="email">Email Address</option>
+                          <option value="date">Date (Calendar)</option>
+                          <option value="time">Time (Grid)</option>
+                          <option value="dropdown">Dropdown List</option>
+                          <option value="boolean">Boolean (Yes/No)</option>
+                        </select>
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#54656F", whiteSpace: "nowrap" }}>
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={(e) => {
+                              const updated = [...editTplFields];
+                              updated[idx].required = e.target.checked;
+                              setEditTplFields(updated);
+                            }}
+                          />
+                          Req
+                        </label>
+                        {editTplFields.length > 1 && (
+                          <button
+                            type="button"
+                            style={{ background: "transparent", border: "none", color: "#C62828", cursor: "pointer", fontSize: 14 }}
+                            onClick={() => {
+                              setEditTplFields(editTplFields.filter((_, i) => i !== idx));
+                            }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {(field.type === "dropdown" || field.type === "choice") && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", backgroundColor: "#F7F9FA", borderRadius: 6, border: "1px solid #E0E0E0" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#54656F" }}>Options Source:</span>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button
+                                type="button"
+                                style={{
+                                  padding: "3px 8px",
+                                  fontSize: 11,
+                                  borderRadius: 12,
+                                  border: "none",
+                                  cursor: "pointer",
+                                  backgroundColor: (field.optionSource || "manual") === "manual" ? "#075E54" : "#E0E0E0",
+                                  color: (field.optionSource || "manual") === "manual" ? "#FFFFFF" : "#54656F",
+                                  fontWeight: 600,
+                                }}
+                                onClick={() => {
+                                  const updated = [...editTplFields];
+                                  updated[idx].optionSource = "manual";
+                                  setEditTplFields(updated);
+                                }}
+                              >
+                                ✏️ Manual
+                              </button>
+                              <button
+                                type="button"
+                                style={{
+                                  padding: "3px 8px",
+                                  fontSize: 11,
+                                  borderRadius: 12,
+                                  border: "none",
+                                  cursor: "pointer",
+                                  backgroundColor: field.optionSource === "table" ? "#075E54" : "#E0E0E0",
+                                  color: field.optionSource === "table" ? "#FFFFFF" : "#54656F",
+                                  fontWeight: 600,
+                                }}
+                                onClick={() => {
+                                  const updated = [...editTplFields];
+                                  updated[idx].optionSource = "table";
+                                  if (!updated[idx].linkedTemplateCommand && templates.length > 0) {
+                                    const otherTpl = templates.find((t) => t.command !== editingTemplate?.command) || templates[0];
+                                    if (otherTpl) {
+                                      updated[idx].linkedTemplateCommand = otherTpl.command;
+                                      const firstField = (otherTpl.fields || [])[0];
+                                      if (firstField) {
+                                        updated[idx].linkedFieldKey = firstField.key || firstField.label;
+                                      }
+                                    }
+                                  }
+                                  setEditTplFields(updated);
+                                }}
+                              >
+                                🔗 From Other Table
+                              </button>
+                            </div>
+                          </div>
+
+                          {(field.optionSource || "manual") === "manual" ? (
+                            <input
+                              style={{ ...s.input, padding: "5px 8px", fontSize: 11, backgroundColor: "#FFFFFF", width: "100%", marginBottom: 0 }}
+                              placeholder="Comma-separated options (e.g. Option 1, Option 2, Option 3)"
+                              value={field.optionsRaw || ""}
+                              onChange={(e) => {
+                                const updated = [...editTplFields];
+                                updated[idx].optionsRaw = e.target.value;
+                                setEditTplFields(updated);
+                              }}
+                            />
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <select
+                                  style={{ ...s.input, flex: 1, padding: "4px 8px", fontSize: 11, backgroundColor: "#FFFFFF", marginBottom: 0 }}
+                                  value={field.linkedTemplateCommand || ""}
+                                  onChange={(e) => {
+                                    const updated = [...editTplFields];
+                                    updated[idx].linkedTemplateCommand = e.target.value;
+                                    const foundTpl = templates.find((t) => t.command === e.target.value);
+                                    const firstF = (foundTpl?.fields || [])[0];
+                                    if (firstF) {
+                                      updated[idx].linkedFieldKey = firstF.key || firstF.label;
+                                    }
+                                    setEditTplFields(updated);
+                                  }}
+                                >
+                                  {templates.map((tpl) => (
+                                    <option key={tpl.command} value={tpl.command}>
+                                      {tpl.icon || "📋"} {tpl.name} (/{tpl.command})
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  style={{ ...s.input, flex: 1, padding: "4px 8px", fontSize: 11, backgroundColor: "#FFFFFF", marginBottom: 0 }}
+                                  value={field.linkedFieldKey || ""}
+                                  onChange={(e) => {
+                                    const updated = [...editTplFields];
+                                    updated[idx].linkedFieldKey = e.target.value;
+                                    setEditTplFields(updated);
+                                  }}
+                                >
+                                  {(templates.find((t) => t.command === (field.linkedTemplateCommand || templates[0]?.command))?.fields || []).map((f, fIdx) => (
+                                    <option key={fIdx} value={f.key || f.label}>
+                                      {f.label} ({f.type || "text"})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              {(() => {
+                                const extracted = getValuesFromTable(
+                                  field.linkedTemplateCommand || templates[0]?.command || "",
+                                  field.linkedFieldKey || ""
+                                );
+                                return (
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+                                    <span style={{ color: "#54656F" }}>
+                                      {extracted.length > 0 ? (
+                                        <>Found <b>{extracted.length}</b> values: {extracted.slice(0, 3).join(", ")}{extracted.length > 3 ? "..." : ""}</>
+                                      ) : (
+                                        <i style={{ color: "#8696A0" }}>No options or submissions found</i>
+                                      )}
+                                    </span>
+                                    {extracted.length > 0 && (
+                                      <button
+                                        type="button"
+                                        style={{ padding: "4px 10px", fontSize: 11, borderRadius: 4, backgroundColor: "#00A884", color: "#FFFFFF", border: "none", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}
+                                        onClick={() => {
+                                          const updated = [...editTplFields];
+                                          updated[idx].optionsRaw = extracted.join(", ");
+                                          setEditTplFields(updated);
+                                          showToast("success", `Imported ${extracted.length} values from table!`);
+                                        }}
+                                      >
+                                        ✓ Import {extracted.length} Values
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={s.modalFooter}>
+                <button type="button" style={s.btnSecondary} onClick={() => setShowEditTemplateModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" style={s.btnPrimary} disabled={savingTemplate}>
+                  {savingTemplate ? "Saving Changes..." : "Save Changes"}
                 </button>
               </div>
             </form>
@@ -2145,6 +2808,7 @@ const s: Record<string, React.CSSProperties> = {
   headerActions: { display: "flex", alignItems: "center", gap: 12 },
   badgeLive: { backgroundColor: "rgba(37,211,102,0.2)", color: "#25D366", padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 600 },
   healthLink: { color: "#fff", fontSize: 13, textDecoration: "none", border: "1px solid rgba(255,255,255,0.3)", padding: "4px 12px", borderRadius: 6 },
+  exitLink: { color: "#fff", fontSize: 13, textDecoration: "none", backgroundColor: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", padding: "5px 12px", borderRadius: 6, fontWeight: 600 },
   logoutBtn: { backgroundColor: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", padding: "6px 14px", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" },
   toast: { maxWidth: 1280, margin: "12px auto 0", padding: "12px 16px", borderRadius: 8, borderWidth: 1, borderStyle: "solid", display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500 },
   container: { maxWidth: 1280, margin: "20px auto", padding: "0 16px 40px" },
