@@ -1,0 +1,6 @@
+{
+  "installCommand": "pnpm install --filter=@chatbot/server...",
+  "buildCommand": "pnpm --filter @chatbot/server build",
+  "outputDirectory": "server/.next",
+  "framework": "nextjs"
+}

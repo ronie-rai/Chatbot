@@ -69,5 +69,10 @@ apps/mobile/.turbo/
 !package.json
 !tsconfig*.json
 !turbo.json
+!vercel.json
+!render.yaml
+!app.json
+!eas.json
 google-credentials.json
 service-account*.json
+
