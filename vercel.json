@@ -1,5 +1,5 @@
 {
-  "installCommand": "pnpm install --filter=@chatbot/shared-types --filter=@chatbot/server...",
+  "installCommand": "pnpm install",
   "buildCommand": "pnpm --filter @chatbot/shared-types build && pnpm --filter @chatbot/server build",
   "outputDirectory": "server/.next",
   "framework": "nextjs"
