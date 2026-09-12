@@ -27,7 +27,8 @@
     },
     "noEmit": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": "."
   },
   "include": [
     "next-env.d.ts",
