@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: chatbot-realtime
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --filter=@chatbot/realtime... && pnpm turbo run build --filter=@chatbot/realtime...
+    startCommand: pnpm --filter @chatbot/realtime start
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: REALTIME_SECRET
+        generateValue: true
