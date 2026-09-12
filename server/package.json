@@ -18,6 +18,10 @@
     "@auth/prisma-adapter": "^2.11.3",
     "@chatbot/shared-types": "workspace:*",
     "@prisma/client": "^5.14.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.9",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "prisma": "^5.14.0",
     "bcryptjs": "^2.4.3",
     "googleapis": "^176.0.0",
@@ -30,10 +34,6 @@
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^20.14.9",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
     "ts-node": "^10.9.2",
