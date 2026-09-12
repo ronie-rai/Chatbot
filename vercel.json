@@ -1,6 +1,6 @@
 {
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @chatbot/shared-types build && pnpm --filter @chatbot/server build",
+  "buildCommand": "pnpm --filter @chatbot/server build",
   "outputDirectory": "server/.next",
   "framework": "nextjs"
 }
