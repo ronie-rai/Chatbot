@@ -8,6 +8,8 @@ dist
 out
 build
 *.tsbuildinfo
+# Pre-built shim committed for deployment (no tsc in CI)
+!packages/shared-types/dist/
 
 # Expo
 .expo
