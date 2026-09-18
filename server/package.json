@@ -31,13 +31,13 @@
     "next-auth": "5.0.0-beta.32",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "typescript": "^5.4.5"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "ts-node": "^10.9.2"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

@@ -160,6 +160,9 @@ importers:
       socket.io-client:
         specifier: ^4.8.3
         version: 4.8.3
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
     devDependencies:
       eslint:
         specifier: ^8.57.0
@@ -170,9 +173,6 @@ importers:
       ts-node:
         specifier: ^10.9.2
         version: 10.9.2(@types/node@20.19.43)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.4.5
-        version: 5.9.3
 
 packages:
 
