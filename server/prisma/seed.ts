@@ -77,11 +77,11 @@ async function main() {
   // ─── 3. Conversation ───────────────────────────────────────────────────────
   const conversation = await prisma.conversation.upsert({
     where: { id: "ofa-conv-001" },
-    update: { name: "OFA Sports AI Assistant" },
+    update: { name: "OFA Assistant" },
     create: {
       id: "ofa-conv-001",
       tenantId: tenant.id,
-      name: "OFA Sports AI Assistant",
+      name: "OFA Assistant",
       kind: ConversationKind.AI,
     },
   });

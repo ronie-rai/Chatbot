@@ -150,6 +150,17 @@ export function ChatScreen({ route, navigation }: Props) {
         formData,
       });
 
+      // Detect offline fallback — submissionId starts with "SUB-" but no message means server was unreachable
+      const isOfflineFallback = !res.message;
+      if (isOfflineFallback) {
+        Alert.alert(
+          "⚠️ Server Unreachable",
+          "Your form was not saved to the database or Google Sheet. Please check your internet connection and ensure the server is running, then try again.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
       if (res.message) {
         setMessages((prev) => {
           const exists = prev.some((m) => m.id === res.message!.id);
@@ -248,27 +259,31 @@ export function ChatScreen({ route, navigation }: Props) {
         );
         setIsBotTyping(true); // Bot reply incoming
 
-        // If message was sent via local fallback, simulate bot response so chat doesn't stall
+        // If message was sent via local fallback (server unreachable), simulate a helpful bot response
         if (saved.id.startsWith("msg-local-")) {
           setTimeout(() => {
             setIsBotTyping(false);
             const lower = text.toLowerCase();
-            let replyText = "Hello! Thanks for reaching out to OFA Sports. How can I help you today with court bookings, coaching, or tournaments?";
-            if (lower.includes("booking") || lower.includes("court") || lower.includes("reserve")) {
-              replyText = "Thank you! I have recorded your court reservation enquiry. Our sports coordinator will confirm slot availability with you shortly.";
+            let replyText = "Hi! I'm your OFA Assistant. To get real AI responses, please ensure the app server is reachable. I can help with court bookings, coaching, tournaments & memberships — just type a slash command like /booking, /membership, /trial, /tournament, /coaching, or /feedback!";
+            if (lower.includes("booking") || lower.includes("court") || lower.includes("reserve") || lower.includes("slot")) {
+              replyText = "I'd love to help with your court booking! Please type */booking* to open the interactive booking form, and I'll record all the details for you. 🏅";
+            } else if (lower.includes("membership") || lower.includes("register") || lower.includes("join")) {
+              replyText = "Great! Type */membership* to open the academy membership registration form and get started. 🏅";
+            } else if (lower.includes("coach") || lower.includes("training") || lower.includes("session")) {
+              replyText = "To schedule a coaching session, type */coaching* to open the consultation form and our team will get back to you. 🏆";
+            } else if (lower.includes("tournament") || lower.includes("competition") || lower.includes("league")) {
+              replyText = "Exciting! Type */tournament* to register for an upcoming tournament or league. 🏆";
+            } else if (lower.includes("trial") || lower.includes("assessment") || lower.includes("evaluation")) {
+              replyText = "Book a free trial session by typing */trial* to open the assessment form. We look forward to meeting you! ⚡";
             } else if (lower.includes("price") || lower.includes("fee") || lower.includes("cost") || lower.includes("rate")) {
-              replyText = "Court rentals start from $25/hr for badminton and $40/hr for tennis courts. Coaching packages start from $120/month. Would you like me to book a slot for you?";
-            } else if (lower.includes("transformer") || lower.includes("motor") || lower.includes("equipment")) {
-              replyText = "Got it! I have received your equipment specification and inquiry. Our technical team is reviewing it.";
-            } else if (text.trim().length > 0) {
-              replyText = `Thank you for your message: "${text}". I have logged your enquiry with OFA Sports. An executive will get back to you shortly!`;
+              replyText = "Court rentals start from ₹500/hr for badminton and ₹800/hr for tennis. Coaching packages start from ₹3,000/month. Would you like to book a slot? Type */booking* to proceed! 🏅";
             }
 
             const botMsg: Message = {
               id: `bot-local-${Date.now()}`,
               conversationId,
               senderId: MOCK_BOT_USER.id,
-              sender: { id: MOCK_BOT_USER.id, name: "OFA AI", role: "bot" },
+              sender: { id: MOCK_BOT_USER.id, name: "OFA Assistant", role: "bot" },
               body: replyText,
               kind: "text",
               status: "read",

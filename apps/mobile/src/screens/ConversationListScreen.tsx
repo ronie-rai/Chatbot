@@ -23,7 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "ConversationList">;
 
 export function ConversationListScreen({ navigation }: Props) {
   const [search, setSearch] = useState("");
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewChatModalVisible, setIsNewChatModalVisible] = useState(false);
 
@@ -82,9 +82,16 @@ export function ConversationListScreen({ navigation }: Props) {
     (async () => {
       try {
         const data = await getConversations(MOCK_CURRENT_USER.id);
-        if (mounted && data.length > 0) setConversations(data);
+        if (mounted) {
+          // Remap known conversation to "OFA Assistant" brand name
+          const remapped = data.map((c) =>
+            c.id === "ofa-conv-001" ? { ...c, name: "OFA Assistant" } : c
+          );
+          setConversations(remapped.length > 0 ? remapped : MOCK_CONVERSATIONS);
+        }
       } catch {
-        // Fall back to mock data if server isn't running yet
+        // Fall back to single mock OFA Assistant conversation
+        if (mounted) setConversations(MOCK_CONVERSATIONS);
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -126,7 +133,7 @@ export function ConversationListScreen({ navigation }: Props) {
     <ConversationListItem
       conversation={item}
       currentUserId={MOCK_CURRENT_USER.id}
-      unreadCount={item.id === "seed-conv-001" ? 0 : 2}
+      unreadCount={0}
       onPress={() =>
         navigation.navigate("Chat", {
           conversationId: item.id,
