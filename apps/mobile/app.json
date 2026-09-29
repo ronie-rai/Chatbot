@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Chatbot",
-    "slug": "chatbot-ai",
+    "slug": "chatbot-saas",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,10 +11,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.chatbot"
+      "bundleIdentifier": "com.rohitremag97.chatbot"
     },
     "android": {
-      "package": "com.yourcompany.chatbot",
+      "package": "com.rohitremag97.chatbot",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -29,7 +29,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
+        "projectId": "a3bede30-1b1e-4a9e-958f-7f4831c525af"
       }
     }
   }

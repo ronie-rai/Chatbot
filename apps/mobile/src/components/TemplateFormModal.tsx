@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   TouchableWithoutFeedback,
   Alert,
+  Keyboard,
+  Animated,
 } from "react-native";
 import type { ChatTemplateItem, TemplateField } from "@chatbot/shared-types";
 import { lookupUserByPhone } from "../api/client";
@@ -49,6 +50,36 @@ export function TemplateFormModal({
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Keyboard shift: animated bottom margin to push sheet above keyboard
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => {
+        Animated.timing(keyboardOffset, {
+          toValue: e.endCoordinates.height,
+          duration: Platform.OS === "ios" ? e.duration || 250 : 200,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      (e) => {
+        Animated.timing(keyboardOffset, {
+          toValue: 0,
+          duration: Platform.OS === "ios" ? e.duration || 200 : 180,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [keyboardOffset]);
 
   // Phone auto-population status
   const [isLookingUpPhone, setIsLookingUpPhone] = useState(false);
@@ -289,9 +320,9 @@ export function TemplateFormModal({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={styles.sheetContainer}
+            {/* Animated.View shifts the sheet up by the keyboard height */}
+            <Animated.View
+              style={[styles.sheetContainer, { marginBottom: keyboardOffset }]}
             >
               {/* Sheet Drag Pill & Header */}
               <View style={styles.header}>
@@ -697,7 +728,7 @@ export function TemplateFormModal({
                   )}
                 </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
+            </Animated.View>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>

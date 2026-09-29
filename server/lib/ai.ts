@@ -184,9 +184,9 @@ export function resolveCredentialsPath(rawPath?: string): string | null {
     p,
     path.resolve(process.cwd(), p),
     path.resolve(process.cwd(), "server", p),
-    path.resolve(__dirname, "..", "..", p),
-    path.resolve(__dirname, "..", p),
-    path.resolve(__dirname, p),
+    path.resolve(process.cwd(), "..", p),
+    path.resolve(process.cwd(), "..", "server", p),
+    path.resolve(process.cwd(), "apps", "server", p),
   ];
   for (const cand of candidates) {
     if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {

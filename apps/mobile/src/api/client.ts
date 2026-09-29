@@ -731,10 +731,11 @@ export async function fetchAdminSubmissions(): Promise<any> {
   }
 }
 
-export async function syncAdminSubmission(submissionId: string): Promise<any> {
-  return await apiFetch<any>("/api/admin/sync-submission", {
+export async function syncAdminSubmission(submissionId: string, tenantId?: string): Promise<any> {
+  // Correct endpoint: POST /api/admin/submissions with action payload
+  return await apiFetch<any>("/api/admin/submissions", {
     method: "POST",
-    body: JSON.stringify({ submissionId }),
+    body: JSON.stringify({ action: "sync_one", submissionId, tenantId }),
   });
 }
 
@@ -750,9 +751,10 @@ export async function saveAdminSheetConfig(data: {
   spreadsheetIdOrUrl: string;
   sheetName?: string;
 }): Promise<any> {
-  return await apiFetch<any>("/api/admin/sheet-config", {
-    method: "POST",
-    body: JSON.stringify(data),
+  // Correct endpoint: PUT /api/admin/organizations/[id]/sheet
+  return await apiFetch<any>(`/api/admin/organizations/${encodeURIComponent(data.organizationId)}/sheet`, {
+    method: "PUT",
+    body: JSON.stringify({ spreadsheetIdOrUrl: data.spreadsheetIdOrUrl, sheetName: data.sheetName }),
   });
 }
 
