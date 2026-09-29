@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 5.0.0"
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -8,17 +9,39 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://chatbot-server-seven-phi.vercel.app",
+        "EXPO_PUBLIC_REALTIME_URL": "https://chatbot-realtime-h0m3.onrender.com",
+        "EXPO_PUBLIC_APP_NAME": "OFA Chatbot",
+        "EXPO_PUBLIC_APP_ENV": "development"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://chatbot-server-seven-phi.vercel.app",
+        "EXPO_PUBLIC_REALTIME_URL": "https://chatbot-realtime-h0m3.onrender.com",
+        "EXPO_PUBLIC_APP_NAME": "OFA Chatbot",
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_ADMIN_EMAIL": "admin@ofa-sports.com",
+        "EXPO_PUBLIC_ADMIN_PASSWORD": "OFA@SuperAdmin2026",
+        "EXPO_PUBLIC_DEMO_EMAIL": "demo@ofa-sports.com",
+        "EXPO_PUBLIC_DEMO_PASSWORD": "demo@user123"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://chatbot-server-seven-phi.vercel.app",
+        "EXPO_PUBLIC_REALTIME_URL": "https://chatbot-realtime-h0m3.onrender.com",
+        "EXPO_PUBLIC_APP_NAME": "OFA Chatbot",
+        "EXPO_PUBLIC_APP_ENV": "production"
       }
     }
   },
