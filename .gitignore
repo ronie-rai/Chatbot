@@ -8,6 +8,9 @@ dist
 out
 build
 *.tsbuildinfo
+# PWA generated files (regenerated on every build by next-pwa)
+server/public/sw.js
+server/public/workbox-*.js
 # Pre-built shim committed for deployment (no tsc in CI)
 !packages/shared-types/dist/
 
@@ -76,6 +79,7 @@ apps/mobile/.turbo/
 !render.yaml
 !app.json
 !eas.json
+!manifest.json
 google-credentials.json
 service-account*.json
 
