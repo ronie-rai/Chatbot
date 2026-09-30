@@ -129,48 +129,98 @@ const INSERT_SHEET_ROW_TOOL: Groq.Chat.Completions.ChatCompletionTool = {
   },
 };
 
+const QUERY_SUBMISSIONS_TOOL: Groq.Chat.Completions.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "query_submissions",
+    description:
+      "Query the database to look up existing submissions, bookings, memberships, admissions, or any other records. Use this when the user asks questions like: 'how many bookings today', 'show me the list', 'who booked today', 'how many members', 'list all admissions', 'total registrations this week', etc. Returns matching records so you can summarize and display them.",
+    parameters: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          description: "The category/sheet to filter by. Examples: 'Bookings', 'Memberships', 'Admissions', 'Enquiries', 'Coaching Enquiries', 'Trial Assessments', 'Payments'. Leave empty to search all categories.",
+        },
+        dateFilter: {
+          type: "string",
+          enum: ["today", "yesterday", "this_week", "this_month", "all"],
+          description: "Filter records by date. Use 'today' for today's records, 'this_week' for last 7 days, 'this_month' for last 30 days.",
+        },
+        search: {
+          type: "string",
+          description: "Optional search keyword to filter by name, phone, sport, or any field value.",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of records to return. Default is 20.",
+        },
+      },
+      required: [],
+    },
+  },
+};
+
 // ─── System Prompt Builder ─────────────────────────────────────────────────────
 
 function buildSystemPrompt(): string {
-  return `You are a helpful, fast, and intelligent AI business assistant for managing customer conversations, bookings, enquiries, and Google Sheet logging.
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+
+  return `You are OFA Assistant — a fast, intelligent AI assistant for OFA Sports Foundation. Today is ${todayStr}, ${timeStr} IST.
 
 ## Your Capabilities
-1. Converse warmly, professionally, and concisely.
-2. Whenever a customer message contains specific details to log (such as bookings, reservations, general enquiries, contact leads, or payments), ALWAYS use the \`insert_sheet_row\` tool to record the data into the appropriate sheet tab.
+1. **Answer questions instantly** — including queries about existing records, bookings, memberships, admissions, and statistics.
+2. **Look up database records** — use the \`query_submissions\` tool whenever the user asks to see data, lists, counts, or statistics.
+3. **Record new data** — use \`insert_sheet_row\` when the user provides booking/enquiry details to log.
+4. **Converse naturally** — answer general questions about OFA Sports, facilities, schedules, etc.
+
+## When to use \`query_submissions\`
+Use this tool immediately when user asks:
+- "how many bookings today" / "show me today's bookings"
+- "list all members" / "who registered this week"
+- "how many admissions this month"
+- "show me the list" / "give me a summary"
+- Any question about existing records, counts, or lists
+
+## When to use \`insert_sheet_row\`
+Use this tool when the user provides specific data to save:
+- Customer name, phone, booking date, sport, payment info
+- Enquiry details, contact info to log
 
 ## Category & Sheet Tab Selection (\`sheetName\`)
 Choose a clear, title-cased tab name for \`sheetName\`:
-- **Bookings**: For court, ground, hall, room, or service bookings/reservations (e.g. tennis court booking, badminton slot, doctor appointment).
-- **Enquiries**: For general service enquiries, price questions, repair requests.
-- **Leads**: For customer contact info, callbacks, business prospects.
-- **Payments**: For payment notifications, receipts, transactions.
-- **Orders**: For item or product orders.
+- **Bookings**: For court, ground, hall, room, or service bookings/reservations
+- **Memberships**: For club/academy membership registrations
+- **Admissions**: For new student/athlete admissions
+- **Enquiries**: For general service enquiries, price questions
+- **Coaching Enquiries**: For 1-on-1 or coaching consultation requests
+- **Trial Assessments**: For free trial session registrations
+- **Payments**: For payment notifications, receipts, transactions
+- **Leads**: For customer contact info, callbacks, business prospects
 
 ## Field Extraction (\`columns\`)
 Extract all provided information into clean, descriptive keys:
-- For Bookings: e.g. "Customer Name", "Mobile No", "Date", "Time / Slot", "Amount", "Activity / Resource", "Details"
-- For Enquiries: e.g. "Customer Name", "Mobile No", "Enquiry", "Details"
-- For Payments: e.g. "Payer Name", "Mobile No", "Amount", "Date", "Purpose", "Reference / Method"
+- For Bookings: "Customer Name", "Mobile No", "Date", "Time / Slot", "Amount", "Activity / Resource", "Details"
+- For Enquiries: "Customer Name", "Mobile No", "Enquiry", "Details"
+- For Payments: "Payer Name", "Mobile No", "Amount", "Date", "Purpose", "Reference / Method"
 
 ## Examples
-✅ User: "100Rs. booking of tennis on 02-sept-2026 by Mr. Anand Mobile no. 9878987345"
-   -> tool: \`insert_sheet_row\`
-   -> sheetName: "Bookings"
-   -> columns: { "Customer Name": "Mr. Anand", "Mobile No": "9878987345", "Date": "02-sept-2026", "Activity": "Tennis", "Amount": "100Rs.", "Details": "Booking of tennis" }
+✅ User: "how many bookings today show me the list"
+   -> tool: \`query_submissions\`
+   -> category: "Bookings", dateFilter: "today"
 
-✅ User: "Tennis Booking, Court1, By Rohit Rai 8789636520 update this in google sheet"
+✅ User: "Tennis Booking, Court1, By Rohit Rai 8789636520"
    -> tool: \`insert_sheet_row\`
    -> sheetName: "Bookings"
-   -> columns: { "Customer Name": "Rohit Rai", "Mobile No": "8789636520", "Activity": "Tennis", "Court": "Court 1", "Details": "Tennis Booking, Court1" }
-
-✅ User: "Badminton Court 1 booking for tomorrow 5pm by Sarah 9876543210"
-   -> tool: \`insert_sheet_row\`
-   -> sheetName: "Bookings"
-   -> columns: { "Customer Name": "Sarah", "Mobile No": "9876543210", "Activity": "Badminton", "Court": "Court 1", "Time": "5:00 PM", "Date": "Tomorrow" }
+   -> columns: { "Customer Name": "Rohit Rai", "Mobile No": "8789636520", "Activity": "Tennis", "Court": "Court 1" }
 
 ## Response Rules
-- Always extract all clear information provided by the user.
-- Keep responses concise and formatted.`;
+- ALWAYS use \`query_submissions\` for ANY question about existing records — never say you cannot access data.
+- Format lists clearly with numbering, names, and key details.
+- Keep responses concise and well-formatted.
+- Never say "I don't have access to the database" — you DO have access via the query tool.`;
 }
 
 // ─── Sheets Integration ───────────────────────────────────────────────────────
@@ -438,18 +488,134 @@ export async function runAITurn(
 
   const response = await groq.chat.completions.create({
     model,
-    max_tokens: 512,
-    tools: [INSERT_SHEET_ROW_TOOL],
+    max_tokens: 1024,
+    tools: [INSERT_SHEET_ROW_TOOL, QUERY_SUBMISSIONS_TOOL],
     tool_choice: "auto",
     messages,
   });
 
   const choice = response.choices[0];
 
-  // 5. Handle tool call
+  // 5. Handle tool calls
   if (choice.finish_reason === "tool_calls" && choice.message.tool_calls?.length) {
     const toolCall = choice.message.tool_calls[0];
 
+    // ── Handle: query_submissions ────────────────────────────────────────────
+    if (toolCall.function.name === "query_submissions") {
+      const input = JSON.parse(toolCall.function.arguments) as {
+        category?: string;
+        dateFilter?: string;
+        search?: string;
+        limit?: number;
+      };
+
+      const limit = Math.min(input.limit || 20, 50);
+      const now = new Date();
+
+      // Build date range
+      let dateFrom: Date | undefined;
+      if (input.dateFilter === "today") {
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (input.dateFilter === "yesterday") {
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        const dateTo = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        // handled via combined filter below
+        void dateTo;
+      } else if (input.dateFilter === "this_week") {
+        dateFrom = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      } else if (input.dateFilter === "this_month") {
+        dateFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      }
+
+      // Build prisma where
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const where: any = { tenantId };
+      if (input.category) {
+        where.OR = [
+          { sheetName: { contains: input.category, mode: "insensitive" } },
+          { templateCommand: { contains: input.category.toLowerCase(), mode: "insensitive" } },
+        ];
+      }
+      if (dateFrom) {
+        where.createdAt = { gte: dateFrom };
+      }
+      if (input.search) {
+        const s = input.search;
+        const searchOr = [
+          { userName: { contains: s, mode: "insensitive" } },
+          { userPhone: { contains: s, mode: "insensitive" } },
+          { submissionRef: { contains: s, mode: "insensitive" } },
+        ];
+        where.AND = [{ OR: searchOr }];
+      }
+
+      const records = await prisma.templateSubmission.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: {
+          submissionRef: true,
+          sheetName: true,
+          userName: true,
+          userPhone: true,
+          data: true,
+          status: true,
+          createdAt: true,
+          syncedToSheet: true,
+        },
+      });
+
+      const total = await prisma.templateSubmission.count({ where });
+
+      // Format records as readable text for Groq to use
+      let recordsText = `Found ${total} record(s)${input.dateFilter && input.dateFilter !== "all" ? ` (${input.dateFilter.replace("_", " ")})` : ""}${input.category ? ` in ${input.category}` : ""}:\n\n`;
+
+      if (records.length === 0) {
+        recordsText += "No records found for the specified criteria.";
+      } else {
+        records.forEach((r, i) => {
+          const data = (r.data as Record<string, string>) || {};
+          const name = r.userName || data["Customer Name"] || data["Full Name"] || data["Name"] || data["Athlete Name"] || data["Member Name"] || "—";
+          const phone = r.userPhone || data["Mobile No"] || data["Phone"] || data["Contact"] || "—";
+          const sport = data["Activity"] || data["Sport"] || data["Activity / Resource"] || data["Preferred Sport"] || "";
+          const slot = data["Time / Slot"] || data["Time"] || data["Batch Start Time"] || "";
+          const date = data["Date"] || data["Booking Date"] || data["Admission Date"] || new Date(r.createdAt).toLocaleDateString("en-IN");
+          const ref = r.submissionRef || "";
+          const sync = r.syncedToSheet ? "✅" : "⏳";
+
+          recordsText += `${i + 1}. *${name}*`;
+          if (phone && phone !== "—") recordsText += ` | 📞 ${phone}`;
+          if (sport) recordsText += ` | 🏟 ${sport}`;
+          if (slot) recordsText += ` | ⏰ ${slot}`;
+          if (date) recordsText += ` | 📅 ${date}`;
+          if (ref) recordsText += ` | ${ref}`;
+          recordsText += ` ${sync}\n`;
+        });
+        if (total > records.length) {
+          recordsText += `\n_...and ${total - records.length} more. Ask for more details or a specific name._`;
+        }
+      }
+
+      // Send tool result back to Groq for a final natural-language reply
+      const finalResponse = await groq.chat.completions.create({
+        model,
+        max_tokens: 1024,
+        messages: [
+          ...messages,
+          { role: "assistant" as const, content: null, tool_calls: choice.message.tool_calls },
+          {
+            role: "tool" as const,
+            tool_call_id: toolCall.id,
+            content: recordsText,
+          },
+        ],
+      });
+
+      const finalReply = finalResponse.choices[0]?.message?.content ?? recordsText;
+      return { reply: finalReply, sheetInserted: false, toolCallId: toolCall.id };
+    }
+
+    // ── Handle: insert_sheet_row ─────────────────────────────────────────────
     if (toolCall.function.name === "insert_sheet_row") {
       const input = JSON.parse(toolCall.function.arguments) as {
         sheetName?: string;
