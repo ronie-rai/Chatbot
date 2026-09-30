@@ -172,17 +172,24 @@ function buildSystemPrompt(): string {
 
 ## Your Capabilities
 1. **Answer questions instantly** — including queries about existing records, bookings, memberships, admissions, and statistics.
-2. **Look up database records** — use the \`query_submissions\` tool whenever the user asks to see data, lists, counts, or statistics.
-3. **Record new data** — use \`insert_sheet_row\` when the user provides booking/enquiry details to log.
+2. **Look up ANY database records** — use the \`query_submissions\` tool whenever the user asks to see data, lists, counts, or statistics.
+3. **Record new data** — use \`insert_sheet_row\` when the user provides details to log.
 4. **Converse naturally** — answer general questions about OFA Sports, facilities, schedules, etc.
 
-## When to use \`query_submissions\`
-Use this tool immediately when user asks:
-- "how many bookings today" / "show me today's bookings"
-- "list all members" / "who registered this week"
-- "how many admissions this month"
-- "show me the list" / "give me a summary"
-- Any question about existing records, counts, or lists
+## CRITICAL: When to use \`query_submissions\`
+Use this tool IMMEDIATELY when user asks about ANY existing data:
+- Bookings: "how many bookings today", "show bookings list", "who booked today"
+- Memberships: "list members", "how many members this month"
+- Admissions: "show admissions", "how many new admissions"
+- Trial sessions: "show trials", "list trial assessments"
+- Equipment: "equipment requests", "show equipment list"
+- Feedback: "show feedback", "ratings"
+- Payments: "show payments", "revenue today"
+- Coaching: "coaching enquiries", "who asked for coaching"
+- Sponsorships: "sponsors list", "show grants"
+- Tournaments: "tournament registrations"
+- ANY question starting with: "show me", "list", "how many", "who", "give me", "what are the", "display"
+- NEVER refuse a data question — always use \`query_submissions\` to fetch and answer.
 
 ## When to use \`insert_sheet_row\`
 Use this tool when the user provides specific data to save:
@@ -191,36 +198,27 @@ Use this tool when the user provides specific data to save:
 
 ## Category & Sheet Tab Selection (\`sheetName\`)
 Choose a clear, title-cased tab name for \`sheetName\`:
-- **Bookings**: For court, ground, hall, room, or service bookings/reservations
-- **Memberships**: For club/academy membership registrations
-- **Admissions**: For new student/athlete admissions
-- **Enquiries**: For general service enquiries, price questions
-- **Coaching Enquiries**: For 1-on-1 or coaching consultation requests
-- **Trial Assessments**: For free trial session registrations
-- **Payments**: For payment notifications, receipts, transactions
-- **Leads**: For customer contact info, callbacks, business prospects
+- **Bookings**: Court, ground, hall, room, or service bookings/reservations
+- **Memberships**: Club/academy membership registrations
+- **Admissions**: New student/athlete admissions
+- **Enquiries**: General service enquiries, price questions
+- **Coaching Enquiries**: 1-on-1 or coaching consultation requests
+- **Trial Assessments**: Free trial session registrations
+- **Payments**: Payment notifications, receipts, transactions
+- **Leads**: Customer contact info, callbacks, business prospects
+- **Equipment Requests**: Sports equipment or gear requests
+- **Feedback & Grievances**: Athlete/parent feedback or complaints
+- **Sponsorships & Grants**: Foundation grants and sponsorships
+- **Tournament Registrations**: Sports event/tournament signups
 
 ## Field Extraction (\`columns\`)
-Extract all provided information into clean, descriptive keys:
-- For Bookings: "Customer Name", "Mobile No", "Date", "Time / Slot", "Amount", "Activity / Resource", "Details"
-- For Enquiries: "Customer Name", "Mobile No", "Enquiry", "Details"
-- For Payments: "Payer Name", "Mobile No", "Amount", "Date", "Purpose", "Reference / Method"
-
-## Examples
-✅ User: "how many bookings today show me the list"
-   -> tool: \`query_submissions\`
-   -> category: "Bookings", dateFilter: "today"
-
-✅ User: "Tennis Booking, Court1, By Rohit Rai 8789636520"
-   -> tool: \`insert_sheet_row\`
-   -> sheetName: "Bookings"
-   -> columns: { "Customer Name": "Rohit Rai", "Mobile No": "8789636520", "Activity": "Tennis", "Court": "Court 1" }
+Extract ALL provided information into clean, descriptive keys matching the form fields.
 
 ## Response Rules
 - ALWAYS use \`query_submissions\` for ANY question about existing records — never say you cannot access data.
-- Format lists clearly with numbering, names, and key details.
+- Format data clearly with numbering, names, and all key details.
 - Keep responses concise and well-formatted.
-- Never say "I don't have access to the database" — you DO have access via the query tool.`;
+- Never say "I don't have access" or "I cannot check" — you always have access via the query tool.`;
 }
 
 // ─── Sheets Integration ───────────────────────────────────────────────────────
@@ -567,32 +565,46 @@ export async function runAITurn(
 
       const total = await prisma.templateSubmission.count({ where });
 
-      // Format records as readable text for Groq to use
-      let recordsText = `Found ${total} record(s)${input.dateFilter && input.dateFilter !== "all" ? ` (${input.dateFilter.replace("_", " ")})` : ""}${input.category ? ` in ${input.category}` : ""}:\n\n`;
+      // Format records as readable text for Groq — show ALL fields generically
+      let recordsText = `Found **${total}** record(s)`;
+      if (input.dateFilter && input.dateFilter !== "all") recordsText += ` (${input.dateFilter.replace(/_/g, " ")})`;
+      if (input.category) recordsText += ` in **${input.category}**`;
+      recordsText += `:\n\n`;
 
       if (records.length === 0) {
         recordsText += "No records found for the specified criteria.";
       } else {
         records.forEach((r, i) => {
           const data = (r.data as Record<string, string>) || {};
-          const name = r.userName || data["Customer Name"] || data["Full Name"] || data["Name"] || data["Athlete Name"] || data["Member Name"] || "—";
-          const phone = r.userPhone || data["Mobile No"] || data["Phone"] || data["Contact"] || "—";
-          const sport = data["Activity"] || data["Sport"] || data["Activity / Resource"] || data["Preferred Sport"] || "";
-          const slot = data["Time / Slot"] || data["Time"] || data["Batch Start Time"] || "";
-          const date = data["Date"] || data["Booking Date"] || data["Admission Date"] || new Date(r.createdAt).toLocaleDateString("en-IN");
-          const ref = r.submissionRef || "";
-          const sync = r.syncedToSheet ? "✅" : "⏳";
 
-          recordsText += `${i + 1}. *${name}*`;
-          if (phone && phone !== "—") recordsText += ` | 📞 ${phone}`;
-          if (sport) recordsText += ` | 🏟 ${sport}`;
-          if (slot) recordsText += ` | ⏰ ${slot}`;
-          if (date) recordsText += ` | 📅 ${date}`;
-          if (ref) recordsText += ` | ${ref}`;
-          recordsText += ` ${sync}\n`;
+          // Primary identifier — try common name fields first, fall back to ref
+          const name =
+            r.userName ||
+            data["Full Name"] || data["Customer Name"] || data["Name"] ||
+            data["Athlete Name"] || data["Member Name"] || data["Trainee Name"] ||
+            data["Sponsor / Organization"] || data["Sponsor"] ||
+            r.submissionRef || "Record";
+
+          const ref = r.submissionRef ? ` [${r.submissionRef}]` : "";
+          const sheet = r.sheetName ? ` (${r.sheetName})` : "";
+          const sync = r.syncedToSheet ? "✅" : "⏳";
+          const createdAt = new Date(r.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+          recordsText += `${i + 1}. **${name}**${ref}${sheet} ${sync} — _${createdAt}_\n`;
+
+          // Dump ALL fields from the form data generically
+          // Skip fields already shown as the name to avoid duplication
+          const skipKeys = new Set(["Full Name", "Customer Name", "Name", "Athlete Name", "Member Name", "Trainee Name"]);
+          const dataEntries = Object.entries(data).filter(([k, v]) => v && !skipKeys.has(k));
+          if (dataEntries.length > 0) {
+            // Group into lines of 2 fields each to keep it compact
+            const fieldLines = dataEntries.map(([k, v]) => `   • **${k}:** ${v}`);
+            recordsText += fieldLines.join("\n") + "\n";
+          }
+          recordsText += "\n";
         });
         if (total > records.length) {
-          recordsText += `\n_...and ${total - records.length} more. Ask for more details or a specific name._`;
+          recordsText += `_...and ${total - records.length} more record(s). Narrow your search or ask for a specific category._`;
         }
       }
 
