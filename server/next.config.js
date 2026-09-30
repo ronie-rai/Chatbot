@@ -1,4 +1,34 @@
 const path = require('path');
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+  runtimeCaching: [
+    {
+      urlPattern: /^https:\/\/chatbot-server-seven-phi\.vercel\.app\/api\/.*/i,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'ofa-api-cache',
+        expiration: { maxEntries: 32, maxAgeSeconds: 60 },
+        networkTimeoutSeconds: 10,
+      },
+    },
+    {
+      urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'ofa-image-cache',
+        expiration: { maxEntries: 64, maxAgeSeconds: 30 * 24 * 60 * 60 },
+      },
+    },
+    {
+      urlPattern: /\.(?:js|css)$/i,
+      handler: 'StaleWhileRevalidate',
+      options: { cacheName: 'ofa-static-cache' },
+    },
+  ],
+});
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -6,15 +36,10 @@ const nextConfig = {
   transpilePackages: ["@chatbot/shared-types"],
 
   // Skip type-checking and linting during `next build`.
-  // Vercel sets NODE_ENV=production which causes pnpm to skip devDependencies,
-  // so `typescript` and `eslint` are not installed. Types are verified separately
-  // via `tsc --noEmit` in local/CI environments.
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
 
   // Explicitly register the @ alias pointing to the server/ root.
-  // path.resolve(__dirname) is always server/ regardless of CWD or tsconfig baseUrl
-  // resolution quirks on Vercel Linux where baseUrl:"." can resolve to repo root.
   webpack(config) {
     config.resolve.alias['@'] = path.resolve(__dirname);
     return config;
@@ -34,4 +59,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withPWA(nextConfig);
