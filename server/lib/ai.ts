@@ -196,14 +196,40 @@ export function resolveCredentialsPath(rawPath?: string): string | null {
   return null;
 }
 
-export async function getGoogleSheetsClient() {
+/**
+ * Parses Google service account credentials from env var or file.
+ * Priority: GOOGLE_SERVICE_ACCOUNT_JSON env var (Vercel) > keyFile (local dev)
+ */
+function getGoogleAuthConfig(): { keyFile: string } | { credentials: object } | null {
+  // 1. Try inline JSON from env var first (works on Vercel/serverless)
+  const jsonEnv = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (jsonEnv) {
+    try {
+      const credentials = JSON.parse(jsonEnv);
+      return { credentials };
+    } catch {
+      console.error("[sheets] GOOGLE_SERVICE_ACCOUNT_JSON is set but not valid JSON");
+    }
+  }
+  // 2. Fall back to file path (local dev)
   const resolvedCredPath = resolveCredentialsPath();
-  if (!resolvedCredPath) return null;
-  const auth = new google.auth.GoogleAuth({
-    keyFile: resolvedCredPath,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  return google.sheets({ version: "v4", auth });
+  if (resolvedCredPath) return { keyFile: resolvedCredPath };
+  return null;
+}
+
+export async function getGoogleSheetsClient() {
+  const authConfig = getGoogleAuthConfig();
+  if (!authConfig) return null;
+  try {
+    const auth = new google.auth.GoogleAuth({
+      ...authConfig,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    return google.sheets({ version: "v4", auth });
+  } catch (e) {
+    console.error("[sheets] Failed to create Google auth client:", e);
+    return null;
+  }
 }
 
 /**
@@ -215,16 +241,16 @@ async function insertSheetRow(
   columns: Record<string, string>,
   rawMessage?: string
 ): Promise<{ success: boolean; sheetName: string }> {
-  const resolvedCredPath = resolveCredentialsPath();
+  const authConfig = getGoogleAuthConfig();
 
-  if (!resolvedCredPath) {
-    console.log(`[sheets] Notice: Service account credentials not found. Simulating row insertion into tab "${sheetName}".`);
-    return { success: true, sheetName };
+  if (!authConfig) {
+    console.log(`[sheets] Notice: Service account credentials not found (no file or GOOGLE_SERVICE_ACCOUNT_JSON env var). Skipping sheet insert for tab "${sheetName}".`);
+    return { success: false, sheetName };
   }
 
   try {
     const auth = new google.auth.GoogleAuth({
-      keyFile: resolvedCredPath,
+      ...authConfig,
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
 
