@@ -292,6 +292,50 @@ async function main() {
       ],
       promptMessage: "🤝 *Foundation Grant & Sponsorship*\nPlease reply with:\n• **Sponsor / Organization** *(Required)*\n• **Contact Person** *(Required)*\n• **Phone / WhatsApp** *(Required)*\n• **Supported Sport / Athlete** *(Required)*\n• **Contribution / Grant Amount** *(Required)*",
     },
+    {
+      command: "admission",
+      name: "New Admission",
+      description: "Register a new student / athlete admission to OFA Sports Foundation batches",
+      sheetName: "Admissions",
+      icon: "🎓",
+      fields: [
+        { key: "name", label: "Full Name", required: true, type: "text" },
+        { key: "email", label: "Email Address", required: true, type: "text" },
+        { key: "mobile", label: "Mobile Number", required: true, type: "phone" },
+        { key: "dob", label: "Date of Birth", required: false, type: "date" },
+        { key: "age", label: "Age", required: false, type: "number" },
+        { key: "gender", label: "Gender", required: false, type: "choice", options: ["Male", "Female", "Other"] },
+        { key: "address", label: "Address", required: false, type: "text" },
+        { key: "venue", label: "Admission Venue", required: true, type: "choice", options: [
+          "OFA Sports Foundation - 1 (Main Campus)",
+          "OFA Sports Foundation - 2 (East Wing)",
+          "OFA Sports Foundation - 3 (Biju Patnaik Indoor Stadium)",
+          "OFA Sports Foundation - 4 (South Campus)",
+        ]},
+        { key: "sport", label: "Preferred Sport", required: true, type: "choice", options: [
+          "Basketball", "Football", "Tennis", "Badminton", "Cricket",
+          "Swimming", "Athletics", "Volleyball", "Table Tennis", "Kabaddi",
+        ]},
+        { key: "admission_date", label: "Admission Date", required: true, type: "date" },
+        { key: "batch_start_time", label: "Batch Start Time", required: false, type: "text" },
+        { key: "batch_end_time", label: "Batch End Time", required: false, type: "text" },
+        { key: "sessions_per_week", label: "Sessions / Week", required: false, type: "choice", options: [
+          "Any / Not specified", "2 days/week", "3 days/week", "4 days/week", "5 days/week", "6 days/week",
+        ]},
+        { key: "monthly_fee", label: "Monthly Fee (₹)", required: true, type: "number" },
+        { key: "admission_fee", label: "Admission Fee One-time (₹)", required: false, type: "number" },
+        { key: "coaching_type", label: "Coaching Type", required: true, type: "choice", options: [
+          "Group Coaching", "Individual Coaching", "Semi-Private (2-4)", "Online Coaching",
+        ]},
+        { key: "age_segment", label: "Age Segment", required: false, type: "choice", options: [
+          "Sub-Junior (Under 10)", "Junior (10-14)", "Youth (15-18)", "Senior (18+)", "Master (35+)",
+        ]},
+        { key: "training_group", label: "Training Group", required: false, type: "choice", options: [
+          "Beginner Group A", "Beginner Group B", "Intermediate Group", "Advanced Group", "Elite Squad",
+        ]},
+      ],
+      promptMessage: "🎓 *New Admission Registration*\n_Register a new student / athlete at OFA Sports Foundation_\n\nPlease fill the following details:\n• **Full Name** *(Required)*\n• **Email Address** *(Required)*\n• **Mobile Number** *(Required)*\n• **Date of Birth**\n• **Gender**\n• **Address**\n• **Admission Venue** *(Required)*\n• **Preferred Sport** *(Required)*\n• **Admission Date** *(Required)*\n• **Batch Start / End Time**\n• **Sessions per Week**\n• **Monthly Fee ₹** *(Required)*\n• **Admission Fee ₹ (One-time)**\n• **Coaching Type** *(Required)*\n• **Age Segment**\n• **Training Group*",
+    },
   ];
 
   for (const tpl of sportsTemplates) {
@@ -317,7 +361,7 @@ async function main() {
       },
     });
   }
-  console.log(`✅ Seeded 8 sports templates for tenant "${tenant.name}"`);
+  console.log(`✅ Seeded 9 sports templates for tenant "${tenant.name}"`);
 
   console.log("\n✅ OFA Sports seeding complete!\n");
 }

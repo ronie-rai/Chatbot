@@ -353,9 +353,9 @@ export function DashboardScreen({ navigation }: Props) {
     });
   }, [submissions, selectedCommand, searchQuery, sportFilter, syncFilter, timeSlotFilter, selectedDayFilter]);
 
-  const totalCount = insights?.totalSubmissions || submissions.length;
+  const totalCount = insights?.totalSubmissions ?? submissions.length;
   const syncedRate = syncHealthData.rate;
-  const todayCount = insights?.submissionsToday || 2;
+  const todayCount = insights?.submissionsToday ?? 0;
 
   const availableCourts = [
     "Tennis - Court 1",
@@ -418,18 +418,18 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <Text style={[styles.metricValue, { color: "#2E7D32" }]}>{todayCount}</Text>
+            <Text style={styles.metricValue}>{todayCount}</Text>
             <Text style={styles.metricLabel}>TODAY</Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <Text style={[styles.metricValue, { color: "#00796B" }]}>{syncedRate}%</Text>
+            <Text style={styles.metricValue}>{syncedRate}%</Text>
             <Text style={styles.metricLabel}>SHEETS SYNC</Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <Text style={[styles.metricValue, { color: "#512DA8" }]}>{templates.length}</Text>
-            <Text style={styles.metricLabel}>TABLES</Text>
+            <Text style={styles.metricValue}>{templates.length}</Text>
+            <Text style={styles.metricLabel}>TEMPLATES</Text>
           </View>
         </View>
       </View>

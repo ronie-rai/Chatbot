@@ -22,6 +22,7 @@ import { TemplateFormModal } from "../components/TemplateFormModal";
 import { PaperclipIcon, SmileyIcon, MicIcon, SendIcon, TrashIcon } from "../components/Icons";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
 import { MOCK_CURRENT_USER, MOCK_BOT_USER, MOCK_MESSAGES } from "../data/mockData";
+import { showNewMessageNotification, showFormSubmissionNotification } from "../services/notifications";
 import {
   getMessages,
   sendMessage,
@@ -168,6 +169,12 @@ export function ChatScreen({ route, navigation }: Props) {
           return [...prev, res.message!];
         });
         scrollToBottom();
+        // Fire push notification for form submission
+        showFormSubmissionNotification({
+          templateName: activeTemplateForModal.name,
+          submitterName: MOCK_CURRENT_USER.name,
+          ref: res.submissionId || "New",
+        }).catch(console.error);
       }
       setActiveTemplateForModal(null);
     } catch (err: any) {
@@ -187,7 +194,15 @@ export function ChatScreen({ route, navigation }: Props) {
         return [...prev, msg];
       });
       scrollToBottom();
-      if (msg.sender?.role === "bot") setIsBotTyping(false);
+      if (msg.sender?.role === "bot") {
+        setIsBotTyping(false);
+        // Fire push notification for bot reply via socket
+        showNewMessageNotification({
+          senderName: msg.sender?.name || "OFA Assistant",
+          messageText: msg.body || "",
+          conversationId,
+        }).catch(console.error);
+      }
     },
 
     // Read receipts — update tick color in-place
@@ -291,6 +306,12 @@ export function ChatScreen({ route, navigation }: Props) {
             };
             setMessages((prev) => [...prev, botMsg]);
             scrollToBottom();
+            // Fire push notification for new bot reply
+            showNewMessageNotification({
+              senderName: "OFA Assistant",
+              messageText: replyText,
+              conversationId,
+            }).catch(console.error);
           }, 1200);
         }
       } catch {
