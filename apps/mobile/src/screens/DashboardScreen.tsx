@@ -16,7 +16,7 @@ import {
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
-import { getDashboardData, BASE_URL, DEFAULT_FALLBACK_TEMPLATES } from "../api/client";
+import { getDashboardData, getEffectiveBaseUrl, getAdminToken, DEFAULT_FALLBACK_TEMPLATES } from "../api/client";
 import { MOCK_CURRENT_USER } from "../data/mockData";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
@@ -237,9 +237,17 @@ export function DashboardScreen({ navigation }: Props) {
   };
 
   const handleOpenWebView = () => {
-    const url = `${BASE_URL}/dashboard`;
+    let baseUrl = getEffectiveBaseUrl();
+    // On physical devices, localhost is unreachable; fallback to deployed Vercel URL
+    if (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")) {
+      baseUrl = process.env.EXPO_PUBLIC_API_URL || "https://chatbot-server-seven-phi.vercel.app";
+    }
+    const token = getAdminToken();
+    // Pass the token as a URL param so the web dashboard can auto-login
+    const params = token ? `?autoToken=${encodeURIComponent(token)}` : "";
+    const url = `${baseUrl}/dashboard${params}`;
     Linking.openURL(url).catch(() => {
-      // Fallback
+      // Fallback — silent
     });
   };
 

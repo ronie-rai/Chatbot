@@ -1,9 +1,7 @@
-"use strict";
 /**
- * @chatbot/shared-types – compiled output
- *
- * All exports are TypeScript-only types (interface / type alias).
- * They are fully erased at compile time and have no runtime representation.
- * This file exists so that Node.js can require() this package without errors.
+ * Shared TypeScript types for the WhatsApp-style AI Chatbot SaaS.
+ * These are the canonical shapes shared between the Next.js server,
+ * the Expo mobile app, and the Socket.io realtime server.
  */
-Object.defineProperty(exports, "__esModule", { value: true });
+export {};
+//# sourceMappingURL=index.js.map

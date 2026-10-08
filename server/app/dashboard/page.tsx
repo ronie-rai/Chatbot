@@ -85,6 +85,9 @@ export default function UserDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Active section: "dashboard" | "customers"
+  const [activePage, setActivePage] = useState<"dashboard" | "customers">("dashboard");
+
   // Filters
   const [selectedTab, setSelectedTab] = useState<string>("all"); // "all" or template command
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,6 +99,25 @@ export default function UserDashboardPage() {
 
   // Active detail modal
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionItem | null>(null);
+
+  // ── Auto-login from mobile app: read ?autoToken= from URL ──────────────────
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const autoToken = params.get("autoToken");
+      if (autoToken) {
+        // Store token so subsequent API calls are authenticated
+        sessionStorage.setItem("sa_token", decodeURIComponent(autoToken));
+        // Remove the token from the visible URL for security
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
+      }
+      // Also switch to customers tab if hash requested
+      if (window.location.hash === "#customers") {
+        setActivePage("customers");
+      }
+    }
+  }, []);
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -269,9 +291,44 @@ export default function UserDashboardPage() {
             </a>
           </div>
         </div>
+
+        {/* Section Nav Tabs */}
+        <div style={{ display: "flex", gap: 4, padding: "8px 24px 0", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
+          <button
+            onClick={() => setActivePage("dashboard")}
+            style={{
+              background: activePage === "dashboard" ? "#FFFFFF" : "rgba(255,255,255,0.15)",
+              color: activePage === "dashboard" ? "#075E54" : "#FFFFFF",
+              border: "none", borderRadius: "8px 8px 0 0",
+              padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            }}
+          >
+            📊 Analytics &amp; Data Hub
+          </button>
+          <button
+            onClick={() => setActivePage("customers")}
+            style={{
+              background: activePage === "customers" ? "#FFFFFF" : "rgba(255,255,255,0.15)",
+              color: activePage === "customers" ? "#075E54" : "#FFFFFF",
+              border: "none", borderRadius: "8px 8px 0 0",
+              padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            }}
+          >
+            👥 Customer Portal
+          </button>
+        </div>
       </header>
 
       <main style={styles.container}>
+        {/* ── CUSTOMER PORTAL SECTION ──────────────────────────────────── */}
+        {activePage === "customers" && (
+          <CustomerPortalSection />
+        )}
+
+        {/* ── ANALYTICS DASHBOARD SECTION ─────────────────────────────── */}
+        {activePage === "dashboard" && (
+          <div style={{ display: "contents" }}>
+
         {/* TOP KPI CARDS */}
         {insights && (
           <div style={styles.kpiGrid}>
@@ -296,6 +353,7 @@ export default function UserDashboardPage() {
             <div
               style={{
                 ...styles.kpiCard,
+
                 cursor: "pointer",
                 border: syncFilter === "synced" ? "2px solid #00A884" : undefined,
                 backgroundColor: syncFilter === "synced" ? "#F0FDF4" : "#FFFFFF",
@@ -953,13 +1011,12 @@ export default function UserDashboardPage() {
             </div>
           )}
         </div>
-      </main>
 
-      {/* ========================================================================= */}
-      {/* ROW DETAIL MODAL / DRAWER                                                 */}
-      {/* ========================================================================= */}
-      {selectedSubmission && (
-        <div style={styles.modalOverlay} onClick={() => setSelectedSubmission(null)}>
+        {/* ===================================================================== */}
+        {/* ROW DETAIL MODAL / DRAWER                                             */}
+        {/* ===================================================================== */}
+        {selectedSubmission && (
+          <div style={styles.modalOverlay} onClick={() => setSelectedSubmission(null)}>
           <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1061,11 +1118,437 @@ export default function UserDashboardPage() {
               </button>
             </div>
           </div>
+          </div>
+        )}
+
+        {/* Close analytics dashboard section wrapper */}
+        </div>
+      )}
+      </main>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 👥 CUSTOMER PORTAL — Full sports academy client management
+// ═══════════════════════════════════════════════════════════════════
+
+interface CustomerProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  sport: string;
+  membershipType: "Monthly" | "Quarterly" | "Annual" | "Trial" | "None";
+  membershipStatus: "Active" | "Expired" | "Pending" | "Suspended";
+  joinDate: string;
+  expiryDate: string | null;
+  totalBookings: number;
+  lastBooking: string | null;
+  age: number | null;
+  gender: "Male" | "Female" | "Other" | null;
+  coach: string | null;
+  emergencyContact: string | null;
+  notes: string | null;
+  loginId: string;
+  role: "CUSTOMER" | "EMPLOYEE";
+  createdBy: string;
+}
+
+const MOCK_CUSTOMERS: CustomerProfile[] = [
+  { id: "c1", name: "Arjun Kumar", email: "arjun@gmail.com", phone: "+91 98765 11111", sport: "Tennis", membershipType: "Annual", membershipStatus: "Active", joinDate: "2026-01-15", expiryDate: "2027-01-15", totalBookings: 24, lastBooking: "2026-10-05", age: 22, gender: "Male", coach: "Coach Sharma", emergencyContact: "+91 90000 11111", notes: "Advanced level, competing at state level", loginId: "arjun.kumar", role: "CUSTOMER", createdBy: "admin" },
+  { id: "c2", name: "Priya Singh", email: "priya@gmail.com", phone: "+91 98765 22222", sport: "Badminton", membershipType: "Quarterly", membershipStatus: "Active", joinDate: "2026-08-01", expiryDate: "2026-11-01", totalBookings: 12, lastBooking: "2026-10-07", age: 18, gender: "Female", coach: "Coach Meena", emergencyContact: "+91 90000 22222", notes: "State U-19 player", loginId: "priya.singh", role: "CUSTOMER", createdBy: "admin" },
+  { id: "c3", name: "Rahul Mehta", email: "rahul@gmail.com", phone: "+91 98765 33333", sport: "Football", membershipType: "Monthly", membershipStatus: "Expired", joinDate: "2026-05-01", expiryDate: "2026-09-30", totalBookings: 8, lastBooking: "2026-09-28", age: 25, gender: "Male", coach: "Coach Ravi", emergencyContact: null, notes: null, loginId: "rahul.mehta", role: "CUSTOMER", createdBy: "staff1" },
+  { id: "c4", name: "Ananya Patel", email: "ananya@gmail.com", phone: "+91 98765 44444", sport: "Swimming", membershipType: "Annual", membershipStatus: "Active", joinDate: "2026-03-10", expiryDate: "2027-03-10", totalBookings: 36, lastBooking: "2026-10-06", age: 15, gender: "Female", coach: "Coach Das", emergencyContact: "+91 90000 44444", notes: "National junior qualifier", loginId: "ananya.patel", role: "CUSTOMER", createdBy: "admin" },
+  { id: "c5", name: "Vikram Nair", email: "vikram@gmail.com", phone: "+91 98765 55555", sport: "Basketball", membershipType: "Trial", membershipStatus: "Pending", joinDate: "2026-10-08", expiryDate: "2026-10-22", totalBookings: 1, lastBooking: "2026-10-08", age: 20, gender: "Male", coach: null, emergencyContact: null, notes: "Trial period", loginId: "vikram.nair", role: "CUSTOMER", createdBy: "staff1" },
+  { id: "c6", name: "Sunita Rao", email: "sunita@gmail.com", phone: "+91 98765 66666", sport: "Yoga & Fitness", membershipType: "Quarterly", membershipStatus: "Active", joinDate: "2026-09-01", expiryDate: "2026-12-01", totalBookings: 18, lastBooking: "2026-10-07", age: 35, gender: "Female", coach: "Coach Latha", emergencyContact: "+91 90000 66666", notes: "Morning batch — 6AM", loginId: "sunita.rao", role: "CUSTOMER", createdBy: "admin" },
+  { id: "c7", name: "Deepak Gupta", email: "deepak@gmail.com", phone: "+91 98765 77777", sport: "Tennis", membershipType: "Monthly", membershipStatus: "Suspended", joinDate: "2026-06-01", expiryDate: "2026-10-01", totalBookings: 15, lastBooking: "2026-09-15", age: 30, gender: "Male", coach: "Coach Sharma", emergencyContact: null, notes: "Payment overdue", loginId: "deepak.gupta", role: "CUSTOMER", createdBy: "admin" },
+  { id: "c8", name: "Meera Krishnan", email: "meera@gmail.com", phone: "+91 98765 88888", sport: "Squash", membershipType: "Annual", membershipStatus: "Active", joinDate: "2026-02-20", expiryDate: "2027-02-20", totalBookings: 42, lastBooking: "2026-10-08", age: 27, gender: "Female", coach: "Coach Arun", emergencyContact: "+91 90000 88888", notes: "State champion 2025", loginId: "meera.krishnan", role: "CUSTOMER", createdBy: "admin" },
+];
+
+const SPORTS_LIST = ["Tennis", "Badminton", "Football", "Basketball", "Swimming", "Squash", "Yoga & Fitness", "Cricket", "Athletics", "Hockey"];
+
+function CustomerPortalSection() {
+  const [customers, setCustomers] = React.useState<CustomerProfile[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [sportFilter, setSportFilter] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState("");
+  const [membershipFilter, setMembershipFilter] = React.useState("");
+  const [showModal, setShowModal] = React.useState(false);
+  const [editCustomer, setEditCustomer] = React.useState<CustomerProfile | null>(null);
+  const [viewCustomer, setViewCustomer] = React.useState<CustomerProfile | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [sortBy, setSortBy] = React.useState<"name" | "joinDate" | "sport" | "membershipStatus">("joinDate");
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+
+  type FormState = {
+    name: string; email: string; phone: string; sport: string;
+    membershipType: CustomerProfile["membershipType"];
+    membershipStatus: CustomerProfile["membershipStatus"];
+    joinDate: string; expiryDate: string | null; age: number | null;
+    gender: CustomerProfile["gender"]; coach: string | null;
+    emergencyContact: string | null; notes: string | null;
+    loginId: string; role: CustomerProfile["role"];
+  };
+
+  const emptyForm: FormState = {
+    name: "", email: "", phone: "", sport: "", membershipType: "None",
+    membershipStatus: "Pending", joinDate: new Date().toISOString().slice(0, 10),
+    expiryDate: null, age: null, gender: null,
+    coach: null, emergencyContact: null,
+    notes: null, loginId: "", role: "CUSTOMER",
+  };
+  const [form, setForm] = React.useState<FormState>(emptyForm);
+
+  React.useEffect(() => {
+    fetch("/api/customers")
+      .then(r => r.json())
+      .then(j => { if (j.ok && j.data) setCustomers(j.data); else setCustomers(MOCK_CUSTOMERS); })
+      .catch(() => setCustomers(MOCK_CUSTOMERS))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    let list = [...customers];
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(c => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.phone.includes(q) || c.loginId.toLowerCase().includes(q) || (c.sport || "").toLowerCase().includes(q));
+    }
+    if (sportFilter) list = list.filter(c => c.sport === sportFilter);
+    if (statusFilter) list = list.filter(c => c.membershipStatus === statusFilter);
+    if (membershipFilter) list = list.filter(c => c.membershipType === membershipFilter);
+    list.sort((a, b) => {
+      const av = String(a[sortBy] ?? ""); const bv = String(b[sortBy] ?? "");
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+    return list;
+  }, [customers, searchQuery, sportFilter, statusFilter, membershipFilter, sortBy, sortDir]);
+
+  const stats = useMemo(() => {
+    const active = customers.filter(c => c.membershipStatus === "Active").length;
+    const expired = customers.filter(c => c.membershipStatus === "Expired").length;
+    const pending = customers.filter(c => c.membershipStatus === "Pending").length;
+    const suspended = customers.filter(c => c.membershipStatus === "Suspended").length;
+    const sportMap: Record<string, number> = {};
+    customers.forEach(c => { if (c.sport) sportMap[c.sport] = (sportMap[c.sport] || 0) + 1; });
+    const topSport = Object.entries(sportMap).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+    const totalBookings = customers.reduce((s, c) => s + (c.totalBookings || 0), 0);
+    return { total: customers.length, active, expired, pending, suspended, topSport, totalBookings };
+  }, [customers]);
+
+  const scColor = (s: string) => {
+    if (s === "Active") return { background: "#E8F5E9", color: "#2E7D32" };
+    if (s === "Expired") return { background: "#FFEBEE", color: "#C62828" };
+    if (s === "Pending") return { background: "#FFF8E1", color: "#F57F17" };
+    if (s === "Suspended") return { background: "#F3E5F5", color: "#6A1B9A" };
+    return { background: "#F0F2F5", color: "#54656F" };
+  };
+  const mcColor = (m: string) => {
+    if (m === "Annual") return { background: "#E3F2FD", color: "#1565C0" };
+    if (m === "Quarterly") return { background: "#E8F5E9", color: "#2E7D32" };
+    if (m === "Monthly") return { background: "#FFF3E0", color: "#E65100" };
+    if (m === "Trial") return { background: "#FCE4EC", color: "#880E4F" };
+    return { background: "#F0F2F5", color: "#54656F" };
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const payload = (editCustomer
+      ? { ...editCustomer, ...form }
+      : { ...form, id: `c-${Date.now()}`, totalBookings: 0, lastBooking: null, createdBy: "web-admin" }) as CustomerProfile;
+    try {
+      const method = editCustomer ? "PUT" : "POST";
+      const res = await fetch("/api/customers", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = await res.json();
+      const saved: CustomerProfile = (j.ok && j.data) ? j.data as CustomerProfile : payload;
+      setCustomers(prev => editCustomer ? prev.map(c => c.id === editCustomer.id ? saved : c) : [saved, ...prev]);
+    } catch {
+      setCustomers(prev => editCustomer ? prev.map(c => c.id === editCustomer.id ? payload : c) : [payload, ...prev]);
+    } finally {
+      setSaving(false); setShowModal(false); setEditCustomer(null); setForm(emptyForm);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this customer profile? This cannot be undone.")) return;
+    try { await fetch(`/api/customers?id=${id}`, { method: "DELETE" }); } catch { /* optimistic */ }
+    setCustomers(prev => prev.filter(c => c.id !== id));
+  };
+
+  const openEdit = (c: CustomerProfile) => {
+    setEditCustomer(c);
+    setForm({ name: c.name, email: c.email, phone: c.phone, sport: c.sport, membershipType: c.membershipType, membershipStatus: c.membershipStatus, joinDate: c.joinDate, expiryDate: c.expiryDate, age: c.age, gender: c.gender, coach: c.coach, emergencyContact: c.emergencyContact, notes: c.notes, loginId: c.loginId, role: c.role } as FormState);
+    setShowModal(true);
+  };
+
+  const toggleSort = (col: typeof sortBy) => {
+    if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir("asc"); }
+  };
+
+  const SortIcon = ({ col }: { col: typeof sortBy }) => (
+    <span style={{ marginLeft: 4, opacity: sortBy === col ? 1 : 0.3 }}>{sortBy === col ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
+  );
+
+  const handleExportCSV = () => {
+    const headers = ["ID","Name","Email","Phone","Login ID","Sport","Plan","Status","Join Date","Expiry","Coach","Bookings","Age","Gender","Emergency","Notes"];
+    const rows = customers.map(c => [c.id,c.name,c.email,c.phone,c.loginId,c.sport,c.membershipType,c.membershipStatus,c.joinDate,c.expiryDate||"",c.coach||"",c.totalBookings,c.age||"",c.gender||"",c.emergencyContact||"",(c.notes||"").replace(/"/g,'""')].map(v => `"${v}"`).join(","));
+    const csv = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const a = document.createElement("a"); a.setAttribute("href", encodeURI(csv)); a.setAttribute("download", `OFA_Customers_${new Date().toISOString().slice(0,10)}.csv`); document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+
+  const formFields: { label: string; key: keyof typeof emptyForm; type: string; placeholder?: string; options?: string[] }[] = [
+    { label: "Full Name *", key: "name", type: "text", placeholder: "e.g. Arjun Kumar" },
+    { label: "Login ID *", key: "loginId", type: "text", placeholder: "e.g. arjun.kumar" },
+    { label: "Email *", key: "email", type: "email", placeholder: "arjun@gmail.com" },
+    { label: "Phone *", key: "phone", type: "tel", placeholder: "+91 98765 00000" },
+    { label: "Age", key: "age", type: "number", placeholder: "e.g. 22" },
+    { label: "Gender", key: "gender", type: "select", options: ["", "Male", "Female", "Other"] },
+    { label: "Sport *", key: "sport", type: "select", options: ["", ...SPORTS_LIST] },
+    { label: "Role", key: "role", type: "select", options: ["CUSTOMER", "EMPLOYEE"] },
+    { label: "Membership Plan", key: "membershipType", type: "select", options: ["None","Trial","Monthly","Quarterly","Annual"] },
+    { label: "Membership Status", key: "membershipStatus", type: "select", options: ["Pending","Active","Expired","Suspended"] },
+    { label: "Join Date", key: "joinDate", type: "date" },
+    { label: "Expiry Date", key: "expiryDate", type: "date" },
+    { label: "Assigned Coach", key: "coach", type: "text", placeholder: "e.g. Coach Sharma" },
+    { label: "Emergency Contact", key: "emergencyContact", type: "tel", placeholder: "+91 90000 00000" },
+  ];
+
+  return (
+    <div style={{ maxWidth: 1360, margin: "0 auto", padding: "24px 16px" }}>
+      {/* KPI CARDS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
+        {[
+          { label: "Total Customers", value: stats.total, icon: "👥", color: "#075E54", bg: "#E8F5E9" },
+          { label: "Active Members", value: stats.active, icon: "✅", color: "#2E7D32", bg: "#F1F8E9" },
+          { label: "Expired", value: stats.expired, icon: "⏰", color: "#C62828", bg: "#FFEBEE" },
+          { label: "Pending", value: stats.pending, icon: "🕐", color: "#F57F17", bg: "#FFF8E1" },
+          { label: "Suspended", value: stats.suspended, icon: "🚫", color: "#6A1B9A", bg: "#F3E5F5" },
+          { label: "Top Sport", value: stats.topSport, icon: "🏆", color: "#512DA8", bg: "#EDE7F6" },
+          { label: "Total Bookings", value: stats.totalBookings, icon: "📅", color: "#0277BD", bg: "#E3F2FD" },
+        ].map((k, i) => (
+          <div key={i} style={{ background: "#FFFFFF", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", display: "flex", gap: 12, alignItems: "center" }}>
+            <div style={{ width: 42, height: 42, borderRadius: 10, backgroundColor: k.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{k.icon}</div>
+            <div>
+              <div style={{ fontSize: 10, color: "#667781", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{k.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: k.color, lineHeight: 1.2 }}>{k.value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* SPORT DISTRIBUTION BAR */}
+      {customers.length > 0 && (
+        <div style={{ background: "#FFFFFF", borderRadius: 12, padding: "16px 18px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#111B21", marginBottom: 12 }}>🏟️ Sport-wise Member Distribution</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(customers.reduce((acc: Record<string, number>, c) => { acc[c.sport || "Other"] = (acc[c.sport || "Other"] || 0) + 1; return acc; }, {})).sort((a, b) => b[1] - a[1]).map(([sport, count], i) => {
+              const pct = Math.round((count / customers.length) * 100);
+              const clrs = ["#075E54","#128C7E","#00A884","#1E88E5","#8E24AA","#FB8C00","#43A047","#D81B60","#3949AB","#00ACC1"];
+              return (
+                <div key={sport} onClick={() => setSportFilter(sportFilter === sport ? "" : sport)} style={{ cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ fontWeight: 600, color: sportFilter === sport ? clrs[i % clrs.length] : "#111B21" }}>{sportFilter === sport ? "✓ " : ""}{sport}</span>
+                    <span style={{ color: "#54656F" }}>{count} ({pct}%)</span>
+                  </div>
+                  <div style={{ height: 8, background: "#F0F2F5", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.max(pct, 4)}%`, background: clrs[i % clrs.length], borderRadius: 4, transition: "width 0.4s ease" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TOOLBAR */}
+      <div style={{ background: "#FFFFFF", borderRadius: 12, padding: "14px 18px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="🔍  Search name, email, phone, login ID..." style={{ flex: 1, minWidth: 200, border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, outline: "none" }} />
+        <select value={sportFilter} onChange={e => setSportFilter(e.target.value)} style={{ border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "#fff" }}>
+          <option value="">All Sports</option>
+          {SPORTS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "#fff" }}>
+          <option value="">All Statuses</option>
+          {["Active","Expired","Pending","Suspended"].map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={membershipFilter} onChange={e => setMembershipFilter(e.target.value)} style={{ border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "#fff" }}>
+          <option value="">All Plans</option>
+          {["Annual","Quarterly","Monthly","Trial","None"].map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <button onClick={() => { setEditCustomer(null); setForm(emptyForm); setShowModal(true); }} style={{ background: "linear-gradient(135deg, #075E54, #128C7E)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+          ➕ Add Customer
+        </button>
+        <button onClick={handleExportCSV} style={{ background: "#fff", border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "9px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#075E54" }}>
+          📥 Export CSV
+        </button>
+      </div>
+
+      {/* TABLE */}
+      <div style={{ background: "#FFFFFF", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid #F0F2F5", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontWeight: 700, fontSize: 15, color: "#111B21" }}>Customer Profiles</span>
+            <span style={{ marginLeft: 10, fontSize: 12, color: "#667781" }}>{filtered.length} of {customers.length} records</span>
+          </div>
+          {(searchQuery || sportFilter || statusFilter || membershipFilter) && (
+            <button onClick={() => { setSearchQuery(""); setSportFilter(""); setStatusFilter(""); setMembershipFilter(""); }} style={{ fontSize: 12, color: "#C62828", background: "#FFEBEE", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>✕ Clear Filters</button>
+          )}
+        </div>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#667781" }}>Loading customers...</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#8696A0" }}>
+            <div style={{ fontSize: 40 }}>👥</div>
+            <p style={{ fontWeight: 600 }}>No customers found. Add your first customer.</p>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E2E8F0" }}>
+                  {([
+                    { label: "Customer", col: "name" as const },
+                    { label: "Login ID", col: null },
+                    { label: "Sport", col: "sport" as const },
+                    { label: "Plan", col: null },
+                    { label: "Status", col: "membershipStatus" as const },
+                    { label: "Joined", col: "joinDate" as const },
+                    { label: "Expires", col: null },
+                    { label: "Bookings", col: null },
+                    { label: "Coach", col: null },
+                    { label: "Actions", col: null },
+                  ] as { label: string; col: typeof sortBy | null }[]).map(({ label, col }) => (
+                    <th key={label} onClick={col ? () => toggleSort(col) : undefined} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, color: "#54656F", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, cursor: col ? "pointer" : "default", whiteSpace: "nowrap", userSelect: "none" }}>
+                      {label}{col && <SortIcon col={col} />}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c, idx) => {
+                  const sc = scColor(c.membershipStatus);
+                  const mc = mcColor(c.membershipType);
+                  const isExpired = c.expiryDate && new Date(c.expiryDate) < new Date();
+                  return (
+                    <tr key={c.id} style={{ borderBottom: "1px solid #F0F2F5", backgroundColor: idx % 2 === 0 ? "#FFFFFF" : "#FAFBFC" }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#F0FDF4")}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = idx % 2 === 0 ? "#FFFFFF" : "#FAFBFC")}
+                    >
+                      <td style={{ padding: "10px 14px" }}>
+                        <div style={{ fontWeight: 700, color: "#111B21" }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: "#8696A0" }}>{c.email}</div>
+                        <div style={{ fontSize: 11, color: "#667781" }}>{c.phone}</div>
+                        {c.age && <div style={{ fontSize: 10, color: "#A0ADB4" }}>{c.age} yrs · {c.gender || "—"}</div>}
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 11, background: "#F0F2F5", padding: "2px 6px", borderRadius: 4, color: "#075E54", fontWeight: 600 }}>{c.loginId}</span>
+                      </td>
+                      <td style={{ padding: "10px 14px", fontWeight: 600, color: "#111B21" }}>{c.sport || "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ ...mc, borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{c.membershipType}</span>
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ ...sc, borderRadius: 6, padding: "3px 9px", fontWeight: 700, fontSize: 11 }}>{c.membershipStatus}</span>
+                      </td>
+                      <td style={{ padding: "10px 14px", color: "#54656F", fontSize: 12 }}>{c.joinDate}</td>
+                      <td style={{ padding: "10px 14px", color: isExpired ? "#C62828" : "#54656F", fontSize: 12, fontWeight: isExpired ? 700 : 400 }}>
+                        {c.expiryDate || "—"}{isExpired ? " ⚠️" : ""}
+                      </td>
+                      <td style={{ padding: "10px 14px", textAlign: "center", fontWeight: 700, color: "#075E54" }}>{c.totalBookings}</td>
+                      <td style={{ padding: "10px 14px", color: "#54656F", fontSize: 12 }}>{c.coach || "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button id={`view-cust-${c.id}`} onClick={() => setViewCustomer(c)} style={{ background: "#E3F2FD", color: "#1565C0", border: "none", borderRadius: 6, padding: "4px 8px", fontWeight: 600, fontSize: 11, cursor: "pointer" }}>View</button>
+                          <button id={`edit-cust-${c.id}`} onClick={() => openEdit(c)} style={{ background: "#E8F5E9", color: "#2E7D32", border: "none", borderRadius: 6, padding: "4px 8px", fontWeight: 600, fontSize: 11, cursor: "pointer" }}>Edit</button>
+                          <button id={`del-cust-${c.id}`} onClick={() => handleDelete(c.id)} style={{ background: "#FFEBEE", color: "#C62828", border: "none", borderRadius: 6, padding: "4px 8px", fontWeight: 600, fontSize: 11, cursor: "pointer" }}>Del</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ADD / EDIT MODAL */}
+      {showModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 16 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 16, width: "100%", maxWidth: 680, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ background: "linear-gradient(135deg, #075E54, #128C7E)", padding: "16px 22px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
+              <h2 style={{ color: "#fff", margin: 0, fontSize: 17, fontWeight: 800 }}>{editCustomer ? "✏️ Edit Customer" : "➕ Add New Customer"}</h2>
+              <button onClick={() => { setShowModal(false); setEditCustomer(null); }} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ padding: "20px 22px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {formFields.map(f => (
+                <div key={f.key as string}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#54656F", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>{f.label}</label>
+                  {f.type === "select" ? (
+                    <select value={(form[f.key] ?? "") as string} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value || null }))} style={{ width: "100%", border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 10px", fontSize: 13, background: "#fff" }}>
+                      {(f.options || []).map(o => <option key={o} value={o}>{o || "— Select —"}</option>)}
+                    </select>
+                  ) : (
+                    <input type={f.type} value={(form[f.key] ?? "") as string} onChange={e => setForm(p => ({ ...p, [f.key]: f.type === "number" ? (e.target.value ? Number(e.target.value) : null) : (e.target.value || null) }))} placeholder={f.placeholder} style={{ width: "100%", boxSizing: "border-box" as const, border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 10px", fontSize: 13 }} />
+                  )}
+                </div>
+              ))}
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#54656F", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>Notes</label>
+                <textarea value={form.notes ?? ""} onChange={e => setForm(p => ({ ...p, notes: e.target.value || null }))} rows={3} placeholder="Any special notes..." style={{ width: "100%", boxSizing: "border-box" as const, border: "1.5px solid #E2E8F0", borderRadius: 8, padding: "8px 10px", fontSize: 13, resize: "vertical" }} />
+              </div>
+            </div>
+            <div style={{ padding: "12px 22px 20px", display: "flex", gap: 10, justifyContent: "flex-end", borderTop: "1px solid #F0F2F5" }}>
+              <button onClick={() => { setShowModal(false); setEditCustomer(null); }} style={{ border: "1.5px solid #E2E8F0", background: "#fff", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#54656F" }}>Cancel</button>
+              <button id="save-customer-btn" onClick={handleSave} disabled={saving || !form.name || !form.loginId} style={{ background: "linear-gradient(135deg, #075E54, #128C7E)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 700, fontSize: 13, cursor: (saving || !form.name || !form.loginId) ? "not-allowed" : "pointer", opacity: (!form.name || !form.loginId) ? 0.6 : 1 }}>
+                {saving ? "Saving..." : editCustomer ? "Update Customer" : "Add Customer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW DETAIL MODAL */}
+      {viewCustomer && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 16 }}>
+          <div style={{ background: "#FFFFFF", borderRadius: 16, width: "100%", maxWidth: 520, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ background: "linear-gradient(135deg, #075E54, #128C7E)", padding: "16px 22px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ color: "#fff", margin: 0, fontSize: 17, fontWeight: 800 }}>👤 {viewCustomer.name}</h2>
+              <button onClick={() => setViewCustomer(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ padding: 22 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+                <span style={{ ...scColor(viewCustomer.membershipStatus), borderRadius: 8, padding: "4px 12px", fontWeight: 700, fontSize: 12 }}>{viewCustomer.membershipStatus}</span>
+                <span style={{ ...mcColor(viewCustomer.membershipType), borderRadius: 8, padding: "4px 12px", fontWeight: 700, fontSize: 12 }}>{viewCustomer.membershipType}</span>
+                <span style={{ background: "#F0F2F5", color: "#54656F", borderRadius: 8, padding: "4px 12px", fontWeight: 700, fontSize: 12 }}>{viewCustomer.sport || "—"}</span>
+              </div>
+              {([
+                ["Login ID", viewCustomer.loginId], ["Email", viewCustomer.email], ["Phone", viewCustomer.phone],
+                ["Age", viewCustomer.age ? `${viewCustomer.age} yrs` : "—"], ["Gender", viewCustomer.gender || "—"],
+                ["Coach", viewCustomer.coach || "—"], ["Join Date", viewCustomer.joinDate], ["Expiry Date", viewCustomer.expiryDate || "—"],
+                ["Total Bookings", String(viewCustomer.totalBookings)], ["Last Booking", viewCustomer.lastBooking || "—"],
+                ["Emergency Contact", viewCustomer.emergencyContact || "—"], ["Role", viewCustomer.role],
+                ["Notes", viewCustomer.notes || "—"], ["Created By", viewCustomer.createdBy],
+              ] as [string, string][]).map(([k, v]) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #F0F2F5" }}>
+                  <span style={{ fontSize: 12, color: "#667781", fontWeight: 600 }}>{k}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#111B21", maxWidth: "60%", textAlign: "right", wordBreak: "break-word" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: "12px 22px 20px", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => { setViewCustomer(null); openEdit(viewCustomer); }} style={{ background: "linear-gradient(135deg, #075E54, #128C7E)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>✏️ Edit</button>
+              <button onClick={() => setViewCustomer(null)} style={{ border: "1.5px solid #E2E8F0", background: "#fff", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#54656F" }}>Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
 
 // --- High-Aesthetic Modern CSS Styles ---
 
