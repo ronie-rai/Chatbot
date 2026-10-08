@@ -83,3 +83,6 @@ apps/mobile/.turbo/
 google-credentials.json
 service-account*.json
 
+# Local build notes
+BUILD_APK.md
+
