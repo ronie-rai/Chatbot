@@ -23,6 +23,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "bcryptjs": "^2.4.3",
+    "decimal.js": "^10.6.0",
     "googleapis": "^176.0.0",
     "groq-sdk": "^1.6.0",
     "jose": "^6.2.10",
