@@ -4,8 +4,9 @@ export type RootStackParamList = {
   Dashboard: undefined;
   Admin: undefined;
   Academy: undefined;
-  AcademyPlayers: undefined;
+  AcademyPlayers: { initialTab?: "players" | "sports" } | undefined;
   AcademyAttendance: undefined;
+  AcademyGrowth: undefined;
   AcademyFinance: undefined;
   AcademyBookings: undefined;
   AcademyAnnouncements: undefined;
@@ -15,3 +16,4 @@ export type RootStackParamList = {
     conversationName: string;
   };
 };
+

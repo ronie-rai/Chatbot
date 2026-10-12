@@ -39,15 +39,17 @@ export function BookingsScreen() {
   const loadData = useCallback(async () => {
     try {
       const facs = await fetchFacilities();
-      setFacilities(facs);
-      const activeFacId = selectedFacilityId || (facs.length > 0 ? facs[0].id : "");
+      const safeFacs = facs || [];
+      setFacilities(safeFacs);
+      const activeFacId = selectedFacilityId || (safeFacs.length > 0 ? safeFacs[0].id : "");
       if (activeFacId) {
         setSelectedFacilityId(activeFacId);
         const bks = await fetchBookings(activeFacId);
-        setBookings(bks);
+        setBookings(bks || []);
       }
     } catch {
-      // Handled in api.ts
+      setFacilities([]);
+      setBookings([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -68,7 +70,9 @@ export function BookingsScreen() {
     setLoading(true);
     try {
       const bks = await fetchBookings(facId);
-      setBookings(bks);
+      setBookings(bks || []);
+    } catch {
+      setBookings([]);
     } finally {
       setLoading(false);
     }

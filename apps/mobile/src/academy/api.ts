@@ -312,6 +312,58 @@ export const MOCK_ACTIVE_PROFILE: AcademyProfile = {
 
 // ─── API Client Methods ───────────────────────────────────────────────────────
 
+export interface AcademyAssessment {
+  id: string;
+  templateName: string;
+  playerName: string;
+  playerCode: string;
+  batchName: string;
+  assessedDate: string;
+  conductedBy: string;
+  scorePct: number;
+  metrics: { name: string; score: number; maxScore: number }[];
+  notes?: string;
+}
+
+const MOCK_ASSESSMENTS: AcademyAssessment[] = [
+  {
+    id: "ass-001",
+    templateName: "Badminton Agility & Footwork Assessment",
+    playerName: "Aarav Sharma",
+    playerCode: "OFA-000001",
+    batchName: "Badminton Juniors Elite",
+    assessedDate: "2026-10-08",
+    conductedBy: "Coach Rajesh",
+    scorePct: 88,
+    metrics: [
+      { name: "Court Agility Shuttle Run", score: 9, maxScore: 10 },
+      { name: "Smash Accuracy & Power", score: 8, maxScore: 10 },
+      { name: "Stamina Beep Test", score: 9, maxScore: 10 },
+      { name: "Backhand Clear Depth", score: 9, maxScore: 10 },
+    ],
+    notes: "Exceptional reflex response on net drops; improve backhand recovery.",
+  },
+  {
+    id: "ass-002",
+    templateName: "Football Core Ball Control & Sprint Drill",
+    playerName: "Kabir Khan",
+    playerCode: "OFA-000003",
+    batchName: "Football Under-14 Squad",
+    assessedDate: "2026-10-09",
+    conductedBy: "Coach Imran",
+    scorePct: 82,
+    metrics: [
+      { name: "Dribble Cone Slalom", score: 8, maxScore: 10 },
+      { name: "30m Sprint Acceleration", score: 9, maxScore: 10 },
+      { name: "First Touch Control", score: 8, maxScore: 10 },
+      { name: "Passing Accuracy", score: 8, maxScore: 10 },
+    ],
+    notes: "High work-rate and explosive pace on the wings.",
+  },
+];
+
+// ─── API Client Methods ───────────────────────────────────────────────────────
+
 export async function fetchAcademyProfile(): Promise<AcademyProfile> {
   if (!userToken) return MOCK_ACTIVE_PROFILE;
   try {
@@ -336,7 +388,10 @@ export async function fetchPlayers(params?: {
   if (!userToken) return { players: MOCK_PLAYERS, total: MOCK_PLAYERS.length };
   try {
     const qs = new URLSearchParams();
-    if (params?.search) qs.set("search", params.search);
+    if (params?.search) {
+      qs.set("search", params.search);
+      qs.set("q", params.search);
+    }
     if (params?.sportId) qs.set("sportId", params.sportId);
     if (params?.status) qs.set("status", params.status);
     if (params?.page) qs.set("page", String(params.page));
@@ -345,9 +400,32 @@ export async function fetchPlayers(params?: {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/players?${qs.toString()}`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ players: AcademyPlayer[]; total: number }>;
-    if (!json.ok || !json.data) return { players: MOCK_PLAYERS, total: MOCK_PLAYERS.length };
-    return json.data;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.players ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_PLAYERS;
+
+    const players: AcademyPlayer[] = (rawList || []).map((p: any) => ({
+      id: p.id || `ply-${Math.random()}`,
+      playerCode: p.playerCode || "OFA-*",
+      fullName: p.fullName || p.name || "Academy Player",
+      dateOfBirth: typeof p.dateOfBirth === "string" ? p.dateOfBirth.slice(0, 10) : "2012-01-01",
+      gender: p.gender || "MALE",
+      status: p.status || "ACTIVE",
+      guardianName: p.guardianName || "Guardian",
+      guardianPhone: p.guardianPhone || "",
+      medicalNotes: p.medicalNotes || null,
+      primarySport:
+        p.primarySport ||
+        (Array.isArray(p.sports) && p.sports.length > 0
+          ? { id: p.sports[0].id, name: p.sports[0].name }
+          : { id: "sport-gen", name: "General Athletics" }),
+      createdAt: p.createdAt || p.joiningDate,
+    }));
+
+    return { players, total: json?.data?.total ?? players.length };
   } catch {
     return { players: MOCK_PLAYERS, total: MOCK_PLAYERS.length };
   }
@@ -378,19 +456,41 @@ export async function admitPlayer(payload: {
     return { ok: true, player: fallbackPlayer };
   }
   try {
+    const backendBody = {
+      name: payload.fullName,
+      dateOfBirth: payload.dateOfBirth,
+      guardianName: payload.guardianName,
+      guardianPhone: payload.guardianPhone,
+      sportIds: [payload.primarySportId],
+      gender: payload.gender,
+      status: "ACTIVE",
+    };
+
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/players`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${userToken}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(backendBody),
     });
-    const json = (await res.json()) as ApiEnvelope<AcademyPlayer>;
+    const json = (await res.json()) as any;
     if (!json.ok || !json.data) {
       return { ok: false, error: json.error?.message || "Failed to admit player" };
     }
-    return { ok: true, player: json.data };
+    const created: AcademyPlayer = {
+      id: json.data.id,
+      playerCode: json.data.playerCode || "OFA-*",
+      fullName: payload.fullName,
+      dateOfBirth: payload.dateOfBirth,
+      gender: payload.gender,
+      status: "ACTIVE",
+      guardianName: payload.guardianName,
+      guardianPhone: payload.guardianPhone,
+      medicalNotes: payload.medicalNotes,
+      primarySport: { id: payload.primarySportId, name: "Selected Sport" },
+    };
+    return { ok: true, player: created };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : "Network error" };
   }
@@ -402,9 +502,20 @@ export async function fetchSports(): Promise<AcademySport[]> {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/sports`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ sports: AcademySport[] }>;
-    if (!json.ok || !json.data) return MOCK_SPORTS;
-    return json.data.sports;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      (Array.isArray(json?.data) ? json.data : null) ??
+      json?.data?.items ??
+      json?.data?.sports ??
+      MOCK_SPORTS;
+
+    return (rawList || []).map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      category: s.category || "SPORTS",
+      billingMethod: s.defaultBillingMethod || s.billingMethod || "MONTHLY_RECURRING",
+      isActive: s.active ?? s.isActive ?? true,
+    }));
   } catch {
     return MOCK_SPORTS;
   }
@@ -417,9 +528,21 @@ export async function fetchBatches(sportId?: string): Promise<AcademyBatch[]> {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/batches${qs}`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ batches: AcademyBatch[] }>;
-    if (!json.ok || !json.data) return MOCK_BATCHES;
-    return json.data.batches;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.batches ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_BATCHES;
+
+    return (rawList || []).map((b: any) => ({
+      id: b.id,
+      name: b.name,
+      sportId: b.sportId || b.sport?.id || "sport-default",
+      sport: b.sport || { id: b.sportId, name: "General Sport" },
+      capacity: b.capacity || 20,
+      headCoachId: b.coachUserId || b.headCoachId,
+    }));
   } catch {
     return MOCK_BATCHES;
   }
@@ -441,9 +564,21 @@ export async function fetchSessions(batchId: string): Promise<AcademySession[]> 
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/sessions?batchId=${batchId}`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ sessions: AcademySession[] }>;
-    if (!json.ok || !json.data) return [];
-    return json.data.sessions;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.sessions ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      [];
+
+    return (rawList || []).map((s: any) => ({
+      id: s.id,
+      batchId: s.batchId,
+      batch: s.batch ? { id: s.batch.id, name: s.batch.name } : undefined,
+      scheduledStart: s.scheduledStart || (s.date ? `${s.date}T${s.startTime || "09:00"}:00Z` : new Date().toISOString()),
+      scheduledEnd: s.scheduledEnd || (s.date ? `${s.date}T${s.endTime || "11:00"}:00Z` : new Date().toISOString()),
+      status: s.status || "SCHEDULED",
+    }));
   } catch {
     return [];
   }
@@ -463,9 +598,30 @@ export async function fetchSessionAttendance(sessionId: string): Promise<Academy
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/attendance?sessionId=${sessionId}`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ attendance: AcademyAttendanceRecord[] }>;
-    if (!json.ok || !json.data) return [];
-    return json.data.attendance;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.attendance ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      [];
+
+    return (rawList || []).map((a: any) => ({
+      id: a.id,
+      sessionId: a.sessionId || sessionId,
+      playerId: a.playerId || a.player?.id,
+      status: a.status || "PRESENT",
+      notes: a.notes || null,
+      player: {
+        id: a.player?.id || a.playerId,
+        playerCode: a.player?.playerCode || "OFA-*",
+        fullName: a.player?.name || a.player?.fullName || "Academy Player",
+        dateOfBirth: a.player?.dateOfBirth || "2012-01-01",
+        gender: a.player?.gender || "MALE",
+        status: a.player?.status || "ACTIVE",
+        guardianName: a.player?.guardianName || "Guardian",
+        guardianPhone: a.player?.guardianPhone || "",
+      },
+    }));
   } catch {
     return [];
   }
@@ -486,9 +642,9 @@ export async function markAttendance(payload: {
       },
       body: JSON.stringify(payload),
     });
-    const json = (await res.json()) as ApiEnvelope<{ count: number }>;
+    const json = (await res.json()) as any;
     if (!json.ok) return { ok: false, error: json.error?.message || "Failed to record attendance" };
-    return { ok: true, count: json.data?.count };
+    return { ok: true, count: json.data?.count ?? payload.records.length };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : "Network error" };
   }
@@ -504,9 +660,38 @@ export async function fetchInvoices(params?: { status?: string; playerId?: strin
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/finance?${qs.toString()}`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ invoices: AcademyInvoice[] }>;
-    if (!json.ok || !json.data) return MOCK_INVOICES;
-    return json.data.invoices;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.invoices ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_INVOICES;
+
+    return (rawList || []).map((inv: any) => {
+      const totalAmount = inv.totalAmountCents ?? inv.subtotalCents ?? inv.totalAmount ?? 500000;
+      const paidAmount = inv.paidAmountCents ?? inv.paidAmount ?? 0;
+      const balance = inv.balanceCents ?? Math.max(totalAmount - paidAmount, 0);
+
+      return {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber || `INV-${inv.id?.slice(0, 6) || "2026"}`,
+        playerId: inv.playerId || "ply-001",
+        player: inv.player
+          ? {
+              id: inv.player.id,
+              fullName: inv.player.name || inv.player.fullName || "Academy Player",
+              playerCode: inv.player.playerCode || "OFA-*",
+            }
+          : undefined,
+        dueDate: inv.dueDate || inv.createdAt || new Date().toISOString(),
+        status: inv.status || (balance === 0 ? "PAID" : "ISSUED"),
+        subtotalCents: inv.subtotalCents ?? totalAmount,
+        discountCents: inv.discountCents ?? 0,
+        totalAmountCents: totalAmount,
+        paidAmountCents: paidAmount,
+        balanceCents: balance,
+      };
+    });
   } catch {
     return MOCK_INVOICES;
   }
@@ -529,11 +714,11 @@ export async function recordPayment(payload: {
       },
       body: JSON.stringify(payload),
     });
-    const json = (await res.json()) as ApiEnvelope<{ receiptNumber: string }>;
+    const json = (await res.json()) as any;
     if (!json.ok || !json.data) {
       return { ok: false, error: json.error?.message || "Payment recording failed" };
     }
-    return { ok: true, receiptNumber: json.data.receiptNumber };
+    return { ok: true, receiptNumber: json.data.receiptNumber || `RCP-${Date.now()}` };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : "Network error" };
   }
@@ -545,9 +730,20 @@ export async function fetchFacilities(): Promise<AcademyFacility[]> {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/facilities`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ facilities: AcademyFacility[] }>;
-    if (!json.ok || !json.data) return MOCK_FACILITIES;
-    return json.data.facilities;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.facilities ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_FACILITIES;
+
+    return (rawList || []).map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      sportType: f.sportType || f.type || "Athletics",
+      courtCount: f.courtCount || f.capacity || 1,
+      isActive: f.active ?? f.isActive ?? true,
+    }));
   } catch {
     return MOCK_FACILITIES;
   }
@@ -560,9 +756,25 @@ export async function fetchBookings(facilityId?: string): Promise<AcademyBooking
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/bookings${qs}`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ bookings: AcademyBooking[] }>;
-    if (!json.ok || !json.data) return MOCK_BOOKINGS;
-    return json.data.bookings;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.bookings ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_BOOKINGS;
+
+    return (rawList || []).map((b: any) => ({
+      id: b.id,
+      facilityId: b.facilityId,
+      facility: b.facility,
+      title: b.title || b.facility?.name || "Court Session",
+      bookedBy: b.bookedBy || b.customerName || "Member",
+      contactPhone: b.contactPhone || b.customerPhone || null,
+      startTime: b.startTime || b.startAt || new Date().toISOString(),
+      endTime: b.endTime || b.endAt || new Date(Date.now() + 7200000).toISOString(),
+      status: b.status || "CONFIRMED",
+      totalAmountCents: b.totalAmountCents ?? 0,
+    }));
   } catch {
     return MOCK_BOOKINGS;
   }
@@ -592,19 +804,39 @@ export async function createBooking(payload: {
     return { ok: true, booking: mockBk };
   }
   try {
+    const backendBody = {
+      facilityId: payload.facilityId,
+      title: payload.title,
+      startAt: payload.startTime,
+      endAt: payload.endTime,
+      notes: payload.bookedBy ? `Booked by ${payload.bookedBy}` : undefined,
+    };
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/bookings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${userToken}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(backendBody),
     });
-    const json = (await res.json()) as ApiEnvelope<AcademyBooking>;
+    const json = (await res.json()) as any;
     if (!json.ok || !json.data) {
       return { ok: false, error: json.error?.message || "Booking slot unavailable" };
     }
-    return { ok: true, booking: json.data };
+    return {
+      ok: true,
+      booking: {
+        id: json.data.id,
+        facilityId: payload.facilityId,
+        title: payload.title,
+        bookedBy: payload.bookedBy,
+        contactPhone: payload.contactPhone,
+        startTime: payload.startTime,
+        endTime: payload.endTime,
+        status: "CONFIRMED",
+        totalAmountCents: payload.totalAmountCents ?? 0,
+      },
+    };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : "Network error" };
   }
@@ -616,9 +848,23 @@ export async function fetchAnnouncements(): Promise<AcademyAnnouncement[]> {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/announcements`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ announcements: AcademyAnnouncement[] }>;
-    if (!json.ok || !json.data) return MOCK_ANNOUNCEMENTS;
-    return json.data.announcements;
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.announcements ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_ANNOUNCEMENTS;
+
+    return (rawList || []).map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      body: a.body || a.content || "",
+      priority: a.priority || "NORMAL",
+      targetAudience: a.targetAudience || a.audience || "ALL",
+      authorName: a.authorName || "Academy Administration",
+      isRead: !!(a.isRead || (Array.isArray(a.reads) && a.reads.length > 0)),
+      createdAt: a.createdAt || a.publishedAt || new Date().toISOString(),
+    }));
   } catch {
     return MOCK_ANNOUNCEMENTS;
   }
@@ -631,10 +877,47 @@ export async function markAnnouncementRead(id: string): Promise<boolean> {
       method: "POST",
       headers: { Authorization: `Bearer ${userToken}` },
     });
-    const json = (await res.json()) as ApiEnvelope<{ success: boolean }>;
-    return !!json.ok;
+    const json = (await res.json()) as any;
+    return !!json?.ok;
   } catch {
     return false;
+  }
+}
+
+export async function fetchAssessments(playerId?: string): Promise<AcademyAssessment[]> {
+  if (!userToken) return MOCK_ASSESSMENTS;
+  try {
+    const qs = playerId ? `?playerId=${playerId}` : "";
+    const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/development/assessments${qs}`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+    });
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      MOCK_ASSESSMENTS;
+
+    return (rawList || []).map((a: any) => ({
+      id: a.id,
+      templateName: a.template?.name || a.templateName || "Player Development Assessment",
+      playerName: a.playerName || a.player?.name || "Academy Athlete",
+      playerCode: a.playerCode || a.player?.playerCode || "OFA-*",
+      batchName: a.batchName || a.batch?.name || "Academy Squad",
+      assessedDate: a.assessedDate ? String(a.assessedDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      conductedBy: a.conductedBy || "Head Coach",
+      scorePct: a.scorePct || 85,
+      metrics: Array.isArray(a.metrics) && a.metrics.length > 0
+        ? a.metrics
+        : [
+            { name: "Agility & Coordination", score: 8, maxScore: 10 },
+            { name: "Game Sense & Decision", score: 9, maxScore: 10 },
+            { name: "Technical Skill Execution", score: 8, maxScore: 10 },
+            { name: "Stamina & Endurance", score: 9, maxScore: 10 },
+          ],
+      notes: a.notes || "Continuous progression noted across all core athletic fundamentals.",
+    }));
+  } catch {
+    return MOCK_ASSESSMENTS;
   }
 }
 
@@ -653,20 +936,32 @@ export async function fetchReportsData(): Promise<AcademyReportsData> {
         headers: { Authorization: `Bearer ${userToken}` },
       }),
     ]);
-    const attJson = (await attRes.json()) as ApiEnvelope<AcademyReportsData["attendance"]>;
-    const finJson = (await finRes.json()) as ApiEnvelope<AcademyReportsData["finance"] & { defaulters?: unknown[] }>;
+    const attJson = (await attRes.json()) as any;
+    const finJson = (await finRes.json()) as any;
+
+    const attSummary = attJson?.data?.summary ?? attJson?.data;
+    const finSummary = finJson?.data?.summary ?? finJson?.data;
 
     return {
-      attendance: attJson.data ?? fallback.attendance,
+      attendance: {
+        totalSessions: attSummary?.totalSessions ?? fallback.attendance.totalSessions,
+        totalRecords: attSummary?.totalMarks ?? attSummary?.totalRecords ?? fallback.attendance.totalRecords,
+        presentCount: attSummary?.presentCount ?? fallback.attendance.presentCount,
+        attendanceRatePct: attSummary?.attendanceRate ?? attSummary?.attendanceRatePct ?? fallback.attendance.attendanceRatePct,
+      },
       finance: {
-        totalInvoicedCents: finJson.data?.totalInvoicedCents ?? fallback.finance.totalInvoicedCents,
-        totalPaidCents: finJson.data?.totalPaidCents ?? fallback.finance.totalPaidCents,
-        totalOutstandingCents: finJson.data?.totalOutstandingCents ?? fallback.finance.totalOutstandingCents,
-        collectionRatePct: finJson.data?.collectionRatePct ?? fallback.finance.collectionRatePct,
-        defaultersCount: finJson.data?.defaulters?.length ?? fallback.finance.defaultersCount,
+        totalInvoicedCents: finSummary?.totalInvoiced ?? fallback.finance.totalInvoicedCents,
+        totalPaidCents: finSummary?.totalCollected ?? fallback.finance.totalPaidCents,
+        totalOutstandingCents: finSummary?.totalOutstanding ?? fallback.finance.totalOutstandingCents,
+        collectionRatePct:
+          finSummary?.totalInvoiced && finSummary?.totalInvoiced > 0
+            ? Number(((finSummary.totalCollected / finSummary.totalInvoiced) * 100).toFixed(1))
+            : fallback.finance.collectionRatePct,
+        defaultersCount: finSummary?.defaultersCount ?? fallback.finance.defaultersCount,
       },
     };
   } catch {
     return fallback;
   }
 }
+

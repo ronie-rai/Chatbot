@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../navigation/types";
 import { Colors, Fonts, Radius, Spacing } from "../../theme/tokens";
 import {
   admitPlayer,
@@ -20,7 +22,12 @@ import {
   type AcademySport,
 } from "../api";
 
-export function PlayerDirectoryScreen() {
+type Props = NativeStackScreenProps<RootStackParamList, "AcademyPlayers">;
+
+export function PlayerDirectoryScreen({ route }: Props) {
+  const [activeTab, setActiveTab] = useState<"players" | "sports">(
+    route.params?.initialTab === "sports" ? "sports" : "players"
+  );
   const [players, setPlayers] = useState<AcademyPlayer[]>([]);
   const [sports, setSports] = useState<AcademySport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,18 +52,25 @@ export function PlayerDirectoryScreen() {
         fetchPlayers({ search: search.trim() || undefined }),
         fetchSports(),
       ]);
-      setPlayers(pRes.players);
-      setSports(sRes);
-      if (sRes.length > 0 && !selectedSportId) {
+      setPlayers(pRes?.players || []);
+      setSports(sRes || []);
+      if ((sRes || []).length > 0 && !selectedSportId) {
         setSelectedSportId(sRes[0].id);
       }
     } catch {
-      // Fallbacks handled gracefully in api.ts
+      setPlayers([]);
+      setSports([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [search, selectedSportId]);
+
+  useEffect(() => {
+    if (route.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route.params?.initialTab]);
 
   useEffect(() => {
     void loadData();
@@ -111,116 +125,194 @@ export function PlayerDirectoryScreen() {
     }
   };
 
-  const filtered = players.filter((p) => {
+  const filtered = (players || []).filter((p) => {
+    if (!p) return false;
     if (statusFilter !== "ALL" && p.status !== statusFilter) return false;
     return true;
   });
 
-  const renderPlayer = ({ item }: { item: AcademyPlayer }) => (
+  const renderPlayer = ({ item }: { item: AcademyPlayer }) => {
+    const displayName = item.fullName || (item as any).name || "Academy Player";
+    const initials = displayName.length >= 2 ? displayName.slice(0, 2).toUpperCase() : "AP";
+    const sportName = item.primarySport?.name || "General Athletics";
+
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <View style={styles.playerMeta}>
+            <View style={styles.nameRow}>
+              <Text style={styles.playerName}>{displayName}</Text>
+              <View style={styles.codeBadge}>
+                <Text style={styles.codeText}>{item.playerCode || "OFA-*"}</Text>
+              </View>
+            </View>
+            <Text style={styles.sportText}>
+              ⚽ {sportName} • {item.gender || "MALE"}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusTag,
+              item.status === "ACTIVE" ? styles.statusActive : styles.statusInactive,
+            ]}
+          >
+            <Text style={styles.statusText}>{item.status || "ACTIVE"}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardDivider} />
+
+        <View style={styles.cardFooter}>
+          <Text style={styles.guardianLabel}>
+            Guardian: <Text style={styles.guardianValue}>{item.guardianName || "N/A"} ({item.guardianPhone || "N/A"})</Text>
+          </Text>
+          {item.medicalNotes ? (
+            <Text style={styles.medNotes}>⚠️ {item.medicalNotes}</Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
+  const renderSport = ({ item }: { item: AcademySport }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {item.fullName.slice(0, 2).toUpperCase()}
-          </Text>
+          <Text style={styles.avatarText}>🏅</Text>
         </View>
         <View style={styles.playerMeta}>
-          <View style={styles.nameRow}>
-            <Text style={styles.playerName}>{item.fullName}</Text>
-            <View style={styles.codeBadge}>
-              <Text style={styles.codeText}>{item.playerCode}</Text>
-            </View>
-          </View>
+          <Text style={styles.playerName}>{item.name}</Text>
           <Text style={styles.sportText}>
-            ⚽ {item.primarySport?.name ?? "General Athletics"} • {item.gender}
+            Billing: {(item.billingMethod || "MONTHLY_RECURRING").replace(/_/g, " ")} • {item.category || "SPORTS"}
           </Text>
         </View>
         <View
           style={[
             styles.statusTag,
-            item.status === "ACTIVE" ? styles.statusActive : styles.statusInactive,
+            item.isActive ? styles.statusActive : styles.statusInactive,
           ]}
         >
-          <Text style={styles.statusText}>{item.status}</Text>
+          <Text style={styles.statusText}>{item.isActive ? "ACTIVE" : "INACTIVE"}</Text>
         </View>
-      </View>
-
-      <View style={styles.cardDivider} />
-
-      <View style={styles.cardFooter}>
-        <Text style={styles.guardianLabel}>
-          Guardian: <Text style={styles.guardianValue}>{item.guardianName} ({item.guardianPhone})</Text>
-        </Text>
-        {item.medicalNotes ? (
-          <Text style={styles.medNotes}>⚠️ {item.medicalNotes}</Text>
-        ) : null}
       </View>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      {/* Search & Actions */}
-      <View style={styles.topBar}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by name, ID (OFA-*), or phone..."
-          placeholderTextColor={Colors.textSecondary}
-          value={search}
-          onChangeText={setSearch}
-          onSubmitEditing={() => void loadData()}
-        />
+      {/* Top Main Mode Toggle */}
+      <View style={styles.mainToggleBar}>
         <TouchableOpacity
-          style={styles.admitBtn}
-          onPress={() => setIsAdmitModalVisible(true)}
-          activeOpacity={0.8}
+          style={[styles.mainToggleBtn, activeTab === "players" && styles.mainToggleBtnActive]}
+          onPress={() => setActiveTab("players")}
         >
-          <Text style={styles.admitBtnText}>+ Admit</Text>
+          <Text style={[styles.mainToggleText, activeTab === "players" && styles.mainToggleTextActive]}>
+            👥 Players Directory ({(players || []).length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.mainToggleBtn, activeTab === "sports" && styles.mainToggleBtnActive]}
+          onPress={() => setActiveTab("sports")}
+        >
+          <Text style={[styles.mainToggleText, activeTab === "sports" && styles.mainToggleTextActive]}>
+            🏅 Sports Master ({(sports || []).length})
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.tabsRow}>
-        {["ALL", "ACTIVE", "INACTIVE", "SUSPENDED"].map((st) => (
-          <TouchableOpacity
-            key={st}
-            style={[styles.tabChip, statusFilter === st && styles.tabChipActive]}
-            onPress={() => setStatusFilter(st)}
-          >
-            <Text
-              style={[
-                styles.tabChipText,
-                statusFilter === st && styles.tabChipTextActive,
-              ]}
+      {activeTab === "players" ? (
+        <>
+          {/* Search & Actions */}
+          <View style={styles.topBar}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by name, ID (OFA-*), or phone..."
+              placeholderTextColor={Colors.textSecondary}
+              value={search}
+              onChangeText={setSearch}
+              onSubmitEditing={() => void loadData()}
+            />
+            <TouchableOpacity
+              style={styles.admitBtn}
+              onPress={() => setIsAdmitModalVisible(true)}
+              activeOpacity={0.8}
             >
-              {st}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Text style={styles.admitBtnText}>+ Admit</Text>
+            </TouchableOpacity>
+          </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={Colors.primary} size="large" />
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          renderItem={renderPlayer}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No players found</Text>
-              <Text style={styles.emptySubtitle}>
-                Try adjusting your search criteria or register a new admission.
-              </Text>
+          {/* Filter Tabs */}
+          <View style={styles.tabsRow}>
+            {["ALL", "ACTIVE", "INACTIVE", "SUSPENDED"].map((st) => (
+              <TouchableOpacity
+                key={st}
+                style={[styles.tabChip, statusFilter === st && styles.tabChipActive]}
+                onPress={() => setStatusFilter(st)}
+              >
+                <Text
+                  style={[
+                    styles.tabChipText,
+                    statusFilter === st && styles.tabChipTextActive,
+                  ]}
+                >
+                  {st}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={Colors.primary} size="large" />
             </View>
-          }
-        />
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={(item) => item.id}
+              renderItem={renderPlayer}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyTitle}>No players found</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Try adjusting your search criteria or register a new admission.
+                  </Text>
+                </View>
+              }
+            />
+          )}
+        </>
+      ) : (
+        /* Sports Master Tab */
+        loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={Colors.primary} size="large" />
+          </View>
+        ) : (
+          <FlatList
+            data={sports || []}
+            keyExtractor={(item) => item.id}
+            renderItem={renderSport}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyTitle}>No sports configured</Text>
+                <Text style={styles.emptySubtitle}>
+                  Configure academy disciplines in system settings.
+                </Text>
+              </View>
+            }
+          />
+        )
       )}
 
       {/* Admission Modal */}
@@ -270,7 +362,7 @@ export function PlayerDirectoryScreen() {
 
             <Text style={styles.fieldLabel}>Primary Sport *</Text>
             <View style={styles.sportPills}>
-              {sports.map((s) => (
+              {(sports || []).map((s) => (
                 <TouchableOpacity
                   key={s.id}
                   style={[
@@ -344,6 +436,32 @@ export function PlayerDirectoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.screenBackground },
+  mainToggleBar: {
+    flexDirection: "row",
+    backgroundColor: Colors.listBackground,
+    padding: Spacing.sm,
+    gap: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  mainToggleBtn: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    alignItems: "center",
+    borderRadius: Radius.md,
+    backgroundColor: Colors.screenBackground,
+  },
+  mainToggleBtnActive: {
+    backgroundColor: Colors.primary,
+  },
+  mainToggleText: {
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  mainToggleTextActive: {
+    color: Colors.textLight,
+  },
   topBar: {
     flexDirection: "row",
     padding: Spacing.md,

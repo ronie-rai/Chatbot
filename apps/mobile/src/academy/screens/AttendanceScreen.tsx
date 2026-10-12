@@ -40,12 +40,13 @@ export function AttendanceScreen() {
   const loadBatches = useCallback(async () => {
     try {
       const bList = await fetchBatches();
-      setBatches(bList);
-      if (bList.length > 0 && !selectedBatchId) {
-        setSelectedBatchId(bList[0].id);
+      const safeBatches = bList || [];
+      setBatches(safeBatches);
+      if (safeBatches.length > 0 && !selectedBatchId) {
+        setSelectedBatchId(safeBatches[0].id);
       }
     } catch {
-      // Fallback in api.ts
+      setBatches([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -59,16 +60,24 @@ export function AttendanceScreen() {
   useEffect(() => {
     if (!selectedBatchId) return;
     let active = true;
-    void fetchSessions(selectedBatchId).then((sess) => {
-      if (!active) return;
-      setSessions(sess);
-      if (sess.length > 0) {
-        setSelectedSessionId(sess[0].id);
-      } else {
+    void fetchSessions(selectedBatchId)
+      .then((sess) => {
+        if (!active) return;
+        const safeSess = sess || [];
+        setSessions(safeSess);
+        if (safeSess.length > 0) {
+          setSelectedSessionId(safeSess[0].id);
+        } else {
+          setSelectedSessionId("");
+          setAttendance([]);
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setSessions([]);
         setSelectedSessionId("");
         setAttendance([]);
-      }
-    });
+      });
     return () => {
       active = false;
     };
@@ -77,17 +86,22 @@ export function AttendanceScreen() {
   useEffect(() => {
     if (!selectedSessionId) return;
     let active = true;
-    void fetchSessionAttendance(selectedSessionId).then((records) => {
-      if (!active) return;
-      const mapped = records.map((r) => ({
-        playerId: r.playerId,
-        playerName: r.player?.fullName ?? "Academy Player",
-        playerCode: r.player?.playerCode ?? "OFA-PLAYER",
-        status: r.status,
-        notes: r.notes || undefined,
-      }));
-      setAttendance(mapped);
-    });
+    void fetchSessionAttendance(selectedSessionId)
+      .then((records) => {
+        if (!active) return;
+        const mapped = (records || []).map((r) => ({
+          playerId: r.playerId || (r as any).player?.id || `p-${Math.random()}`,
+          playerName: (r as any).player?.fullName || (r as any).player?.name || "Academy Player",
+          playerCode: (r as any).player?.playerCode || "OFA-*",
+          status: r.status || "PRESENT",
+          notes: r.notes || undefined,
+        }));
+        setAttendance(mapped);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAttendance([]);
+      });
     return () => {
       active = false;
     };
@@ -100,12 +114,12 @@ export function AttendanceScreen() {
 
   const setPlayerStatus = (playerId: string, status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED") => {
     setAttendance((prev) =>
-      prev.map((p) => (p.playerId === playerId ? { ...p, status } : p))
+      (prev || []).map((p) => (p.playerId === playerId ? { ...p, status } : p))
     );
   };
 
   const markAll = (status: "PRESENT" | "ABSENT") => {
-    setAttendance((prev) => prev.map((p) => ({ ...p, status })));
+    setAttendance((prev) => (prev || []).map((p) => ({ ...p, status })));
   };
 
   const handleSave = async () => {
@@ -119,7 +133,7 @@ export function AttendanceScreen() {
     try {
       const res = await markAttendance({
         sessionId: selectedSessionId,
-        records: attendance.map((a) => ({
+        records: (attendance || []).map((a) => ({
           playerId: a.playerId,
           status: a.status,
           notes: a.notes,
@@ -140,9 +154,9 @@ export function AttendanceScreen() {
     }
   };
 
-  const presentCount = attendance.filter((a) => a.status === "PRESENT").length;
-  const absentCount = attendance.filter((a) => a.status === "ABSENT").length;
-  const lateCount = attendance.filter((a) => a.status === "LATE").length;
+  const presentCount = (attendance || []).filter((a) => a.status === "PRESENT").length;
+  const absentCount = (attendance || []).filter((a) => a.status === "ABSENT").length;
+  const lateCount = (attendance || []).filter((a) => a.status === "LATE").length;
 
   const renderAttendanceRow = ({ item }: { item: PlayerAttendanceState }) => (
     <View style={styles.playerRow}>

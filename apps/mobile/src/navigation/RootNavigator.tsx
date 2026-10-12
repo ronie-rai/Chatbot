@@ -9,6 +9,7 @@ import { DashboardScreen } from "../screens/DashboardScreen";
 import { AcademyHomeScreen } from "../screens/AcademyHomeScreen";
 import { PlayerDirectoryScreen } from "../academy/screens/PlayerDirectoryScreen";
 import { AttendanceScreen } from "../academy/screens/AttendanceScreen";
+import { GrowthScreen } from "../academy/screens/GrowthScreen";
 import { FinanceScreen } from "../academy/screens/FinanceScreen";
 import { BookingsScreen } from "../academy/screens/BookingsScreen";
 import { AnnouncementsScreen } from "../academy/screens/AnnouncementsScreen";
@@ -63,6 +64,11 @@ export function RootNavigator() {
         name="AcademyAttendance"
         component={AttendanceScreen}
         options={{ title: "Session Attendance", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyGrowth"
+        component={GrowthScreen}
+        options={{ title: "Growth & Skill Tracking", headerBackVisible: true }}
       />
       <Stack.Screen
         name="AcademyFinance"

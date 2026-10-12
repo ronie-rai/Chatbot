@@ -51,12 +51,17 @@ export function AcademyHomeScreen({ navigation }: Props) {
   const handleModulePress = (m: AcademyNavModule) => {
     switch (m.id) {
       case "players":
+        navigation.navigate("AcademyPlayers", { initialTab: "players" });
+        break;
       case "sports":
-        navigation.navigate("AcademyPlayers");
+        navigation.navigate("AcademyPlayers", { initialTab: "sports" });
         break;
       case "batches":
       case "attendance":
         navigation.navigate("AcademyAttendance");
+        break;
+      case "growth":
+        navigation.navigate("AcademyGrowth");
         break;
       case "fees":
       case "invoices":
@@ -75,13 +80,11 @@ export function AcademyHomeScreen({ navigation }: Props) {
         navigation.navigate("AcademyReports");
         break;
       case "portal":
-        navigation.navigate("AcademyPlayers");
-        break;
+      case "users":
+      case "forms":
+      case "jerseys":
       default:
-        Alert.alert(
-          m.title,
-          `${m.title} is active in the academy backend.`
-        );
+        navigation.navigate("AcademyPlayers", { initialTab: "players" });
         break;
     }
   };

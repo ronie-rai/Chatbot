@@ -35,9 +35,9 @@ export function FinanceScreen() {
   const loadData = useCallback(async () => {
     try {
       const invs = await fetchInvoices();
-      setInvoices(invs);
+      setInvoices(invs || []);
     } catch {
-      // Graceful fallback
+      setInvoices([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -56,7 +56,7 @@ export function FinanceScreen() {
   const openPaymentModal = (invoice?: AcademyInvoice) => {
     if (invoice) {
       setSelectedInvoice(invoice);
-      setAmountRupees((invoice.balanceCents / 100).toString());
+      setAmountRupees(((invoice.balanceCents || 0) / 100).toString());
     } else {
       setSelectedInvoice(null);
       setAmountRupees("");
@@ -72,7 +72,7 @@ export function FinanceScreen() {
       return;
     }
 
-    const playerId = selectedInvoice?.playerId || invoices[0]?.playerId;
+    const playerId = selectedInvoice?.playerId || (invoices && invoices[0]?.playerId);
     if (!playerId) {
       Alert.alert("Error", "No player selected for payment allocation.");
       return;
@@ -106,24 +106,32 @@ export function FinanceScreen() {
     }
   };
 
-  const totalOutstanding = invoices.reduce((acc, inv) => acc + (inv.balanceCents || 0), 0) / 100;
+  const totalOutstanding = (invoices || []).reduce((acc, inv) => acc + (inv.balanceCents || 0), 0) / 100;
 
-  const filteredInvoices = invoices.filter((inv) => {
+  const filteredInvoices = (invoices || []).filter((inv) => {
+    if (!inv) return false;
     if (filter === "ALL") return true;
-    if (filter === "PENDING") return inv.balanceCents > 0;
-    if (filter === "PAID") return inv.balanceCents === 0;
+    if (filter === "PENDING") return (inv.balanceCents || 0) > 0;
+    if (filter === "PAID") return (inv.balanceCents || 0) === 0;
     return true;
   });
 
   const renderInvoice = ({ item }: { item: AcademyInvoice }) => {
-    const isSettled = item.balanceCents === 0;
+    const isSettled = (item.balanceCents || 0) === 0;
+    const playerName = item.player?.fullName || (item.player as any)?.name || "Player";
+    const playerCode = item.player?.playerCode || "OFA-*";
+    const totalAmount = ((item.totalAmountCents || 0) / 100).toLocaleString("en-IN");
+    const paidAmount = ((item.paidAmountCents || 0) / 100).toLocaleString("en-IN");
+    const balance = ((item.balanceCents || 0) / 100).toLocaleString("en-IN");
+    const dueDateStr = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : "N/A";
+
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View>
-            <Text style={styles.invoiceNum}>{item.invoiceNumber}</Text>
+            <Text style={styles.invoiceNum}>{item.invoiceNumber || "INV-*"}</Text>
             <Text style={styles.playerName}>
-              {item.player?.fullName ?? "Player"} ({item.player?.playerCode ?? "OFA-*"})
+              {playerName} ({playerCode})
             </Text>
           </View>
           <View
@@ -138,7 +146,7 @@ export function FinanceScreen() {
                 isSettled ? styles.statusPaidText : styles.statusUnpaidText,
               ]}
             >
-              {isSettled ? "PAID" : `DUE ₹${(item.balanceCents / 100).toLocaleString("en-IN")}`}
+              {isSettled ? "PAID" : `DUE ₹${balance}`}
             </Text>
           </View>
         </View>
@@ -148,15 +156,15 @@ export function FinanceScreen() {
         <View style={styles.cardDetails}>
           <View style={styles.amountCol}>
             <Text style={styles.amountLabel}>Total Bill</Text>
-            <Text style={styles.amountVal}>₹{(item.totalAmountCents / 100).toLocaleString("en-IN")}</Text>
+            <Text style={styles.amountVal}>₹{totalAmount}</Text>
           </View>
           <View style={styles.amountCol}>
             <Text style={styles.amountLabel}>Paid So Far</Text>
-            <Text style={styles.amountVal}>₹{(item.paidAmountCents / 100).toLocaleString("en-IN")}</Text>
+            <Text style={styles.amountVal}>₹{paidAmount}</Text>
           </View>
           <View style={styles.amountCol}>
             <Text style={styles.amountLabel}>Due Date</Text>
-            <Text style={styles.amountVal}>{new Date(item.dueDate).toLocaleDateString()}</Text>
+            <Text style={styles.amountVal}>{dueDateStr}</Text>
           </View>
         </View>
 
@@ -166,7 +174,7 @@ export function FinanceScreen() {
             onPress={() => openPaymentModal(item)}
             activeOpacity={0.8}
           >
-            <Text style={styles.payNowText}>Collect ₹{(item.balanceCents / 100).toLocaleString("en-IN")}</Text>
+            <Text style={styles.payNowText}>Collect ₹{balance}</Text>
           </TouchableOpacity>
         )}
       </View>
