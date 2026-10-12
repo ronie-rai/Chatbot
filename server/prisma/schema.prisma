@@ -58,11 +58,13 @@ model Tenant {
   createdAt DateTime @default(now())
 
   // Relations
-  users           User[]
-  conversations   Conversation[]
-  sheetConnections SheetConnection[]
-  templates       ChatTemplate[]
-  submissions     TemplateSubmission[]
+  users                  User[]
+  conversations          Conversation[]
+  sheetConnections       SheetConnection[]
+  templates              ChatTemplate[]
+  submissions            TemplateSubmission[]
+  academyMemberships     AcademyMembership[]
+  academyRolePermissions AcademyRolePermission[]
 
   @@map("tenants")
 }
@@ -82,9 +84,10 @@ model User {
   createdAt    DateTime @default(now())
 
   // Relations
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  participants Participant[]
-  messages     Message[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants       Participant[]
+  messages           Message[]
+  academyMemberships AcademyMembership[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -105,7 +108,7 @@ model Conversation {
   updatedAt DateTime         @updatedAt
 
   // Relations
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   participants Participant[]
   messages     Message[]
   submissions  TemplateSubmission[]
@@ -118,10 +121,10 @@ model Conversation {
 
 /// Join table: a user's membership in a conversation.
 model Participant {
-  id             String       @id @default(cuid())
+  id             String   @id @default(cuid())
   conversationId String
   userId         String
-  joinedAt       DateTime     @default(now())
+  joinedAt       DateTime @default(now())
 
   // Relations
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -200,10 +203,10 @@ model SystemSetting {
 model ChatTemplate {
   id            String   @id @default(cuid())
   tenantId      String
-  command       String   /// e.g. "booking", "membership", "trial" (lowercase, without slash)
-  name          String   /// e.g. "Facility & Court Booking"
-  description   String?  /// e.g. "Reserve sports courts and facilities"
-  sheetName     String   /// e.g. "Facility Bookings" (dedicated tab in Google Sheet)
+  command       String /// e.g. "booking", "membership", "trial" (lowercase, without slash)
+  name          String /// e.g. "Facility & Court Booking"
+  description   String? /// e.g. "Reserve sports courts and facilities"
+  sheetName     String /// e.g. "Facility Bookings" (dedicated tab in Google Sheet)
   icon          String?  @default("📋")
   /// JSON array of field objects: [{ key, label, required, type, placeholder }]
   fields        Json
@@ -225,22 +228,22 @@ model ChatTemplate {
 
 /// Data logged into Google Sheets and synchronized in the PostgreSQL database.
 model TemplateSubmission {
-  id              String        @id @default(cuid())
+  id              String   @id @default(cuid())
   tenantId        String
   conversationId  String?
   templateId      String?
-  templateCommand String        /// e.g. "booking", "membership", "ai_tool"
-  sheetName       String        /// Target Google Sheet tab name, e.g. "Facility Bookings"
-  submissionRef   String?       /// Unique ID, e.g. "SUB-LXZ123"
+  templateCommand String /// e.g. "booking", "membership", "ai_tool"
+  sheetName       String /// Target Google Sheet tab name, e.g. "Facility Bookings"
+  submissionRef   String? /// Unique ID, e.g. "SUB-LXZ123"
   userName        String?
   userPhone       String?
   /// Key-value JSON pairs of extracted columns: { "Full Name": "...", "Sport": "..." }
   data            Json
-  rawMessage      String?       @db.Text
-  status          String        @default("CONFIRMED")
-  syncedToSheet   Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  rawMessage      String?  @db.Text
+  status          String   @default("CONFIRMED")
+  syncedToSheet   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -252,4 +255,852 @@ model TemplateSubmission {
   @@index([sheetName])
   @@index([submissionRef])
   @@map("template_submissions")
+}
+
+// ─── Academy module (additive, Phase 1) ───────────────────────────────────────
+// Sports Academy Management. All tables are prefixed `acad_` and scoped by tenantId.
+
+enum AcademyRole {
+  OWNER
+  MANAGER
+  COACH
+  ACCOUNTS
+  RECEPTION
+  GUARDIAN
+}
+
+/// Links a chat-app User to an academy role. One membership per user per tenant.
+model AcademyMembership {
+  id        String      @id @default(cuid())
+  tenantId  String
+  userId    String
+  role      AcademyRole
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, role])
+  @@map("acad_memberships")
+}
+
+/// Per-tenant override of the built-in role permission matrix (granted=false revokes a default).
+model AcademyRolePermission {
+  id        String      @id @default(cuid())
+  tenantId  String
+  role      AcademyRole
+  resource  String
+  action    String
+  granted   Boolean
+  updatedAt DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, role, resource, action])
+  @@index([tenantId, role])
+  @@map("acad_role_permissions")
+}
+
+/// Append-only audit trail. UPDATE/DELETE are blocked by a database trigger.
+/// tenantId intentionally has no FK so history survives tenant removal.
+model AcademyAuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  summary     String?
+  before      Json?
+  after       Json?
+  reason      String?
+  operationId String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@map("acad_audit_logs")
+}
+
+// ─── Academy Phase 2: core operations ─────────────────────────────────────────
+// Data tables carry tenantId (indexed, enforced in every query); no FK to tenants so
+// tenant-level maintenance never cascades into academy history.
+
+model AcademySport {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  name                 String
+  description          String?
+  active               Boolean  @default(true)
+  /// FIXED | PER_SESSION | PRO_RATA — default billing method for new fee plans
+  defaultBillingMethod String   @default("FIXED")
+  attendanceRules      Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  players AcademyPlayerSport[]
+  batches AcademyBatch[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("acad_sports")
+}
+
+/// Atomic per-tenant counter used to generate unique Player IDs.
+model AcademyPlayerCounter {
+  tenantId String @id
+  next     Int    @default(1)
+
+  @@map("acad_player_counters")
+}
+
+model AcademyPlayer {
+  id            String    @id @default(cuid())
+  tenantId      String
+  /// System-generated, unique per tenant, e.g. OFA-000123
+  playerCode    String
+  name          String
+  dateOfBirth   DateTime  @db.Date
+  guardianName  String
+  guardianPhone String
+  address       String?
+  joiningDate   DateTime  @db.Date
+  startTime     String?
+  endTime       String?
+  /// Private storage key; served via signed URL only
+  photoKey      String?
+  /// ACTIVE | INACTIVE | SUSPENDED | WITHDRAWN
+  status        String    @default("ACTIVE")
+  archivedAt    DateTime?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sports             AcademyPlayerSport[]
+  enrollments        AcademyBatchEnrollment[]
+  attendance         AcademyAttendance[]
+  fieldValues        AcademyFieldValue[]
+  guardianLinks      AcademyGuardianPlayer[]
+  invites            AcademyGuardianInvite[]
+  // Phase 3
+  feeAssignments     AcademyPlayerFeeAssignment[]
+  invoices           AcademyInvoice[]
+  payments           AcademyPayment[]
+  // Phase 4
+  assessmentResults  AcademyAssessmentResult[]
+  itemAllocations    AcademyItemAllocation[]
+
+  @@unique([tenantId, playerCode])
+  @@index([tenantId, status])
+  @@index([tenantId, guardianPhone])
+  @@index([tenantId, name])
+  @@map("acad_players")
+}
+
+model AcademyPlayerSport {
+  id       String   @id @default(cuid())
+  playerId String
+  sportId  String
+  status   String   @default("ACTIVE")
+  joinedAt DateTime @default(now())
+
+  player AcademyPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  sport  AcademySport  @relation(fields: [sportId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, sportId])
+  @@index([sportId])
+  @@map("acad_player_sports")
+}
+
+model AcademyBatch {
+  id            String    @id @default(cuid())
+  tenantId      String
+  sportId       String
+  name          String
+  coachUserId   String?
+  /// Training weekdays, 0 = Sunday … 6 = Saturday
+  days          Int[]
+  startTime     String
+  endTime       String
+  facilityId    String?
+  capacity      Int?
+  active        Boolean   @default(true)
+  effectiveFrom DateTime? @db.Date
+  effectiveTo   DateTime? @db.Date
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sport       AcademySport             @relation(fields: [sportId], references: [id], onDelete: Restrict)
+  enrollments AcademyBatchEnrollment[]
+  sessions    AcademySession[]
+
+  @@unique([tenantId, sportId, name])
+  @@index([tenantId, active])
+  @@index([tenantId, coachUserId])
+  @@map("acad_batches")
+}
+
+model AcademyBatchEnrollment {
+  id        String    @id @default(cuid())
+  batchId   String
+  playerId  String
+  startDate DateTime  @db.Date
+  endDate   DateTime? @db.Date
+
+  batch  AcademyBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  player AcademyPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, playerId, startDate])
+  @@index([playerId])
+  @@map("acad_batch_enrollments")
+}
+
+/// One concrete training occurrence. Sport/coach/time are snapshotted so later
+/// schedule edits never rewrite history.
+model AcademySession {
+  id          String   @id @default(cuid())
+  tenantId    String
+  batchId     String
+  sportId     String
+  coachUserId String?
+  date        DateTime @db.Date
+  startTime   String
+  endTime     String
+  /// SCHEDULED | HELD | CANCELLED | HOLIDAY
+  status      String   @default("SCHEDULED")
+  createdAt   DateTime @default(now())
+
+  batch      AcademyBatch        @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  attendance AcademyAttendance[]
+
+  @@unique([batchId, date, startTime])
+  @@index([tenantId, date])
+  @@map("acad_sessions")
+}
+
+model AcademyAttendance {
+  id               String   @id @default(cuid())
+  tenantId         String
+  sessionId        String
+  playerId         String
+  /// Snapshots — never follow later enrollment changes
+  sportId          String
+  batchId          String
+  /// PRESENT | ABSENT | LATE | EXCUSED | LEAVE
+  status           String
+  markedBy         String
+  /// Client idempotency key for safe offline retry
+  opId             String?
+  correctionReason String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  session     AcademySession                @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  player      AcademyPlayer                 @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  corrections AcademyAttendanceCorrection[]
+
+  @@unique([sessionId, playerId])
+  @@index([tenantId, playerId])
+  @@index([tenantId, opId])
+  @@map("acad_attendance")
+}
+
+model AcademyAttendanceCorrection {
+  id           String   @id @default(cuid())
+  attendanceId String
+  oldStatus    String
+  newStatus    String
+  reason       String
+  correctedBy  String
+  createdAt    DateTime @default(now())
+
+  attendance AcademyAttendance @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+
+  @@index([attendanceId])
+  @@map("acad_attendance_corrections")
+}
+
+model AcademyFormSection {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  order    Int     @default(0)
+  archived Boolean @default(false)
+
+  fields AcademyFormField[]
+
+  @@index([tenantId, order])
+  @@map("acad_form_sections")
+}
+
+model AcademyFormField {
+  id           String   @id @default(cuid())
+  tenantId     String
+  sectionId    String?
+  /// Stable machine key; never reused
+  key          String
+  label        String
+  description  String?
+  /// text|longtext|number|date|time|dropdown|multiselect|radio|checkbox|yesno|phone|email|image|file|currency|readonly
+  type         String
+  required     Boolean  @default(false)
+  /// Core fields (player id, name, sports, dob, guardian, joining date, status) cannot be removed
+  isCore       Boolean  @default(false)
+  defaultValue Json?
+  validation   Json?
+  options      Json?
+  visibility   Json?
+  order        Int      @default(0)
+  /// Archive instead of delete so historical values are preserved
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  section AcademyFormSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  values  AcademyFieldValue[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId, archived, order])
+  @@map("acad_form_fields")
+}
+
+model AcademyFieldValue {
+  id        String   @id @default(cuid())
+  tenantId  String
+  playerId  String
+  fieldId   String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  player AcademyPlayer    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  field  AcademyFormField @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+
+  @@unique([playerId, fieldId])
+  @@index([tenantId, fieldId])
+  @@map("acad_field_values")
+}
+
+model AcademyGuardian {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// Linked chat-app account once the guardian accepts an invite
+  userId    String?
+  name      String
+  phone     String
+  createdAt DateTime @default(now())
+
+  players AcademyGuardianPlayer[]
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, phone])
+  @@map("acad_guardians")
+}
+
+/// Account→player authorization link. Created only through a verified invite.
+model AcademyGuardianPlayer {
+  id         String    @id @default(cuid())
+  guardianId String
+  playerId   String
+  relation   String?
+  verifiedAt DateTime?
+
+  guardian AcademyGuardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  player   AcademyPlayer   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([guardianId, playerId])
+  @@index([playerId])
+  @@map("acad_guardian_players")
+}
+
+model AcademyGuardianInvite {
+  id        String    @id @default(cuid())
+  tenantId  String
+  playerId  String
+  phone     String
+  /// SHA-256 of the one-time token; the raw token is never stored
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  player AcademyPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, playerId])
+  @@map("acad_guardian_invites")
+}
+
+// ─── Academy Phase 3: Finance & Bookings ───────────────────────────────────────
+
+/// Fee plan — defines how a sport's invoices are calculated for a set of players.
+model AcademyFeePlan {
+  id                String   @id @default(cuid())
+  tenantId          String
+  sportId           String
+  name              String
+  /// FIXED | PER_SESSION | PRO_RATA
+  billingMethod     String   @default("FIXED")
+  /// INR base amount (for FIXED/PRO_RATA) or per-session rate
+  baseAmount        Decimal  @db.Decimal(12, 2)
+  currency          String   @default("INR")
+  /// Billing period: MONTHLY | QUARTERLY | ANNUAL
+  billingPeriod     String   @default("MONTHLY")
+  /// Whether mid-month joiners are prorated
+  proRateMidPeriod  Boolean  @default(true)
+  /// Tax rate as decimal e.g. 0.18 for 18%
+  taxRate           Decimal  @default(0) @db.Decimal(5, 4)
+  /// JSON policy flags: trialSessions, makeupSessions, approvedLeave, etc.
+  policies          Json?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  assignments AcademyPlayerFeeAssignment[]
+
+  @@index([tenantId, sportId, active])
+  @@map("acad_fee_plans")
+}
+
+/// Assigns a fee plan to a player for a specific sport (with effective dates).
+model AcademyPlayerFeeAssignment {
+  id          String    @id @default(cuid())
+  tenantId    String
+  playerId    String
+  feePlanId   String
+  sportId     String
+  effectiveFrom DateTime @db.Date
+  effectiveTo   DateTime? @db.Date
+  /// Manual discount / concession on top of plan
+  discountAmount Decimal @default(0) @db.Decimal(12, 2)
+  discountReason String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  player  AcademyPlayer  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  feePlan AcademyFeePlan @relation(fields: [feePlanId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, playerId])
+  @@index([tenantId, feePlanId])
+  @@map("acad_player_fee_assignments")
+}
+
+/// A generated invoice for a player covering a billing period.
+model AcademyInvoice {
+  id            String    @id @default(cuid())
+  tenantId      String
+  playerId      String
+  sportId       String
+  feePlanId     String?
+  /// ISO period string e.g. "2026-04"
+  period        String
+  /// DRAFT | FINALIZED | VOID
+  status        String    @default("DRAFT")
+  subtotal      Decimal   @db.Decimal(12, 2)
+  discount      Decimal   @default(0) @db.Decimal(12, 2)
+  taxAmount     Decimal   @default(0) @db.Decimal(12, 2)
+  totalAmount   Decimal   @db.Decimal(12, 2)
+  dueDate       DateTime? @db.Date
+  finalizedAt   DateTime?
+  voidedAt      DateTime?
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  player    AcademyPlayer         @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  lines     AcademyInvoiceLine[]
+  payments  AcademyPaymentAllocation[]
+  adjustments AcademyFeeAdjustment[]
+  receipts  AcademyReceipt[]
+
+  @@unique([tenantId, playerId, sportId, period])
+  @@index([tenantId, playerId])
+  @@index([tenantId, status])
+  @@index([tenantId, period])
+  @@map("acad_invoices")
+}
+
+/// A single line within an invoice — stores the formula snapshot for auditability.
+model AcademyInvoiceLine {
+  id           String  @id @default(cuid())
+  invoiceId    String
+  description  String
+  /// JSON: { method, sessions, attended, rate, denom, … }
+  formulaSnapshot Json
+  amount       Decimal @db.Decimal(12, 2)
+  sortOrder    Int     @default(0)
+
+  invoice AcademyInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("acad_invoice_lines")
+}
+
+/// A payment record (cash / bank transfer / UPI — no gateway in v1).
+model AcademyPayment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  playerId    String
+  amount      Decimal  @db.Decimal(12, 2)
+  currency    String   @default("INR")
+  /// CASH | BANK_TRANSFER | UPI | CHEQUE | OTHER
+  method      String   @default("CASH")
+  reference   String?
+  paidAt      DateTime @default(now())
+  recordedBy  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  allocations AcademyPaymentAllocation[]
+  receipts    AcademyReceipt[]
+  player      AcademyPlayer @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, playerId])
+  @@index([tenantId, paidAt])
+  @@map("acad_payments")
+}
+
+/// Allocation of a payment amount to a specific invoice (supports partial payments).
+model AcademyPaymentAllocation {
+  id          String  @id @default(cuid())
+  paymentId   String
+  invoiceId   String
+  amount      Decimal @db.Decimal(12, 2)
+
+  payment AcademyPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice AcademyInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+  @@map("acad_payment_allocations")
+}
+
+/// Signed credit / debit adjustment against a finalized invoice (never rewrite finalized invoices).
+model AcademyFeeAdjustment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  invoiceId   String
+  /// CREDIT (reduces dues) | DEBIT (increases dues)
+  type        String
+  amount      Decimal  @db.Decimal(12, 2)
+  reason      String
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  invoice AcademyInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, invoiceId])
+  @@map("acad_fee_adjustments")
+}
+
+/// PDF receipt record (key = storage path, served via signed URL).
+model AcademyReceipt {
+  id          String   @id @default(cuid())
+  tenantId    String
+  invoiceId   String
+  paymentId   String?
+  storageKey  String
+  generatedAt DateTime @default(now())
+
+  invoice AcademyInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  payment AcademyPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, invoiceId])
+  @@map("acad_receipts")
+}
+
+/// Sports facility (court, ground, gym, pool, etc.)
+model AcademyFacility {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  type        String?
+  capacity    Int?
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hours    AcademyFacilityHour[]
+  closures AcademyFacilityClosure[]
+  bookings AcademyBooking[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("acad_facilities")
+}
+
+/// Weekly availability windows for a facility.
+model AcademyFacilityHour {
+  id         String @id @default(cuid())
+  facilityId String
+  /// 0 = Sunday … 6 = Saturday
+  dayOfWeek  Int
+  openTime   String
+  closeTime  String
+
+  facility AcademyFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+  @@map("acad_facility_hours")
+}
+
+/// One-off closure / maintenance window for a facility.
+model AcademyFacilityClosure {
+  id         String   @id @default(cuid())
+  facilityId String
+  date       DateTime @db.Date
+  reason     String?
+
+  facility AcademyFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, date])
+  @@map("acad_facility_closures")
+}
+
+/// Court / facility booking.
+/// The DB exclusion constraint (tstzrange per facility for CONFIRMED rows) is
+/// enforced by a raw migration SQL statement — Prisma cannot express it directly.
+model AcademyBooking {
+  id           String   @id @default(cuid())
+  tenantId     String
+  facilityId   String
+  requestedBy  String
+  title        String?
+  startAt      DateTime
+  endAt        DateTime
+  /// PENDING | CONFIRMED | CANCELLED | REJECTED
+  status       String   @default("PENDING")
+  notes        String?
+  confirmedBy  String?
+  confirmedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  facility AcademyFacility @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, facilityId, startAt])
+  @@index([tenantId, requestedBy])
+  @@map("acad_bookings")
+}
+
+// ─── Academy Phase 4: Development & Inventory ──────────────────────────────────
+
+/// Template for assessing players (e.g. fitness test, skill checklist).
+model AcademyAssessmentTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  sportId     String?
+  name        String
+  description String?
+  /// JSON: array of { key, label, type, unit, min, max }
+  fields      Json
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assessments AcademyAssessment[]
+
+  @@index([tenantId, sportId, active])
+  @@map("acad_assessment_templates")
+}
+
+/// An assessment event — applied to players in a batch or ad-hoc.
+model AcademyAssessment {
+  id           String   @id @default(cuid())
+  tenantId     String
+  templateId   String
+  batchId      String?
+  assessedDate DateTime @db.Date
+  notes        String?
+  conductedBy  String?
+  createdAt    DateTime @default(now())
+
+  template AcademyAssessmentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  results  AcademyAssessmentResult[]
+
+  @@index([tenantId, assessedDate])
+  @@index([tenantId, templateId])
+  @@map("acad_assessments")
+}
+
+/// A single player's scores in one assessment.
+model AcademyAssessmentResult {
+  id           String @id @default(cuid())
+  assessmentId String
+  playerId     String
+  /// JSON: { fieldKey: value, … }
+  scores       Json
+  notes        String?
+
+  assessment AcademyAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  player     AcademyPlayer     @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([assessmentId, playerId])
+  @@index([playerId])
+  @@map("acad_assessment_results")
+}
+
+/// Inventory item type (e.g. "Jersey — Home Kit", "Cricket Bat Grade A").
+model AcademyItemType {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  /// JERSEY | EQUIPMENT | UNIFORM | OTHER
+  category    String   @default("OTHER")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  allocations AcademyItemAllocation[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("acad_item_types")
+}
+
+/// Allocation history row — never overwritten; each issuance or return is a new row.
+model AcademyItemAllocation {
+  id          String   @id @default(cuid())
+  tenantId    String
+  itemTypeId  String
+  playerId    String
+  /// ISSUED | RETURNED | LOST | REPLACED
+  eventType   String   @default("ISSUED")
+  quantity    Int      @default(1)
+  size        String?
+  number      String?
+  notes       String?
+  recordedBy  String?
+  recordedAt  DateTime @default(now())
+
+  itemType AcademyItemType @relation(fields: [itemTypeId], references: [id], onDelete: Restrict)
+  player   AcademyPlayer   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, playerId])
+  @@index([tenantId, itemTypeId])
+  @@map("acad_item_allocations")
+}
+
+// ─── Academy Phase 5: Comms & Notifications ────────────────────────────────────
+
+/// Broadcast announcement to staff or guardians.
+model AcademyAnnouncement {
+  id          String   @id @default(cuid())
+  tenantId    String
+  authorId    String?
+  title       String
+  body        String   @db.Text
+  /// ALL | STAFF | GUARDIANS | SPECIFIC_SPORT
+  audience    String   @default("ALL")
+  sportId     String?
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reads AcademyAnnouncementRead[]
+
+  @@index([tenantId, publishedAt])
+  @@map("acad_announcements")
+}
+
+/// Tracks which users have read an announcement (deduplication).
+model AcademyAnnouncementRead {
+  id             String   @id @default(cuid())
+  announcementId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  announcement AcademyAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@map("acad_announcement_reads")
+}
+
+/// Rule that controls when a notification is auto-generated (e.g. "3 days before invoice due").
+model AcademyNotificationRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  /// E.g. "invoice.due_reminder" | "attendance.absent" | "assessment.ready"
+  eventType   String
+  daysOffset  Int      @default(0)
+  enabled     Boolean  @default(true)
+  /// JSON: additional filter config
+  config      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, eventType, daysOffset])
+  @@index([tenantId, enabled])
+  @@map("acad_notification_rules")
+}
+
+/// A single notification destined for a user.
+model AcademyNotification {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  /// E.g. "invoice.due_reminder" | "player.admitted" | "booking.confirmed"
+  type        String
+  title       String
+  body        String
+  /// JSONB: contextual payload (invoiceId, playerId, etc.)
+  payload     Json?
+  /// QUEUED | SENT | DELIVERED | FAILED | READ
+  status      String   @default("QUEUED")
+  readAt      DateTime?
+  /// De-duplication key: (tenantId, type, dedupeKey) is unique per day
+  dedupeKey   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deliveries AcademyNotificationDelivery[]
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, type, dedupeKey])
+  @@map("acad_notifications")
+}
+
+/// Per-channel delivery attempt record (push / in-app / SMS).
+model AcademyNotificationDelivery {
+  id             String   @id @default(cuid())
+  notificationId String
+  /// PUSH | IN_APP | SMS
+  channel        String
+  /// QUEUED | SENT | DELIVERED | FAILED
+  status         String   @default("QUEUED")
+  /// Expo push ticket / FCM message id / etc.
+  providerRef    String?
+  attempts       Int      @default(0)
+  lastAttemptAt  DateTime?
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  notification AcademyNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([status, lastAttemptAt])
+  @@map("acad_notification_deliveries")
+}
+
+/// Per-tenant academy settings (timezone, holidays, policies).
+model AcademySettings {
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique
+  timezone             String   @default("Asia/Kolkata")
+  currency             String   @default("INR")
+  playerIdPrefix       String   @default("OFA")
+  attendanceCorrectionWindowDays Int @default(7)
+  /// JSON: public holidays array [{ date, name }]
+  holidays             Json?
+  /// JSON: misc policy toggles
+  policies             Json?
+  updatedAt            DateTime @updatedAt
+
+  @@map("acad_settings")
 }

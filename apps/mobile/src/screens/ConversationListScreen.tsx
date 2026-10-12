@@ -17,6 +17,7 @@ import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
 import { MOCK_CONVERSATIONS, MOCK_CURRENT_USER, setCurrentUser, MOCK_DEMO_USER } from "../data/mockData";
 import { getConversations, createConversation } from "../api/client";
 import { showConfirm } from "../utils/alert";
+import { fetchAcademyProfile } from "../academy/api";
 import type { Conversation } from "@chatbot/shared-types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ConversationList">;
@@ -26,6 +27,7 @@ export function ConversationListScreen({ navigation }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewChatModalVisible, setIsNewChatModalVisible] = useState(false);
+  const [academyEnabled, setAcademyEnabled] = useState(false);
 
   const isAdmin = MOCK_CURRENT_USER.role === "admin";
 
@@ -55,6 +57,16 @@ export function ConversationListScreen({ navigation }: Props) {
             <Text style={styles.dashboardHeaderBtnText}>📊 Dashboard</Text>
           </TouchableOpacity>
 
+          {academyEnabled && (
+            <TouchableOpacity
+              style={styles.dashboardHeaderBtn}
+              onPress={() => navigation.navigate("Academy")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dashboardHeaderBtnText}>Academy</Text>
+            </TouchableOpacity>
+          )}
+
           {isAdmin && (
             <TouchableOpacity
               style={styles.adminHeaderBtn}
@@ -75,7 +87,18 @@ export function ConversationListScreen({ navigation }: Props) {
         </View>
       ),
     });
-  }, [navigation, isAdmin]);
+  }, [navigation, isAdmin, academyEnabled]);
+
+  // Academy module visibility is decided by the server (feature flag + membership).
+  useEffect(() => {
+    let mounted = true;
+    void fetchAcademyProfile().then((p) => {
+      if (mounted) setAcademyEnabled(p.enabled);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;

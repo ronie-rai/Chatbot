@@ -6,6 +6,13 @@ import { ConversationListScreen } from "../screens/ConversationListScreen";
 import { ChatScreen } from "../screens/ChatScreen";
 import { AdminScreen } from "../screens/AdminScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
+import { AcademyHomeScreen } from "../screens/AcademyHomeScreen";
+import { PlayerDirectoryScreen } from "../academy/screens/PlayerDirectoryScreen";
+import { AttendanceScreen } from "../academy/screens/AttendanceScreen";
+import { FinanceScreen } from "../academy/screens/FinanceScreen";
+import { BookingsScreen } from "../academy/screens/BookingsScreen";
+import { AnnouncementsScreen } from "../academy/screens/AnnouncementsScreen";
+import { ReportsScreen } from "../academy/screens/ReportsScreen";
 import { Colors, Fonts } from "../theme/tokens";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -41,6 +48,41 @@ export function RootNavigator() {
         name="Admin"
         component={AdminScreen}
         options={{ title: "Admin Portal", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="Academy"
+        component={AcademyHomeScreen}
+        options={{ title: "Sports Academy", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyPlayers"
+        component={PlayerDirectoryScreen}
+        options={{ title: "Players & Admissions", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyAttendance"
+        component={AttendanceScreen}
+        options={{ title: "Session Attendance", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyFinance"
+        component={FinanceScreen}
+        options={{ title: "Fees & Invoices", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyBookings"
+        component={BookingsScreen}
+        options={{ title: "Courts & Bookings", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyAnnouncements"
+        component={AnnouncementsScreen}
+        options={{ title: "Announcements", headerBackVisible: true }}
+      />
+      <Stack.Screen
+        name="AcademyReports"
+        component={ReportsScreen}
+        options={{ title: "Academy Reports", headerBackVisible: true }}
       />
       <Stack.Screen
         name="Chat"

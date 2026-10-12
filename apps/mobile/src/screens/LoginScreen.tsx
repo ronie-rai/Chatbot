@@ -17,6 +17,7 @@ import type { RootStackParamList } from "../navigation/types";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
 import { getEffectiveBaseUrl, setCustomBaseUrl, setAdminToken } from "../api/client";
 import { MOCK_ADMIN_USER, MOCK_DEMO_USER, setCurrentUser } from "../data/mockData";
+import { setAcademyToken } from "../academy/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
@@ -58,6 +59,7 @@ export function LoginScreen({ navigation }: Props) {
     }
 
     setLoading(true);
+    setAcademyToken(null);
     try {
       const res = await fetch(`${getEffectiveBaseUrl()}/api/auth/login`, {
         method: "POST",
@@ -79,6 +81,9 @@ export function LoginScreen({ navigation }: Props) {
       // Successful server-side authentication
       if (json.data?.adminToken) {
         setAdminToken(json.data.adminToken);
+      }
+      if (typeof json.data?.token === "string") {
+        setAcademyToken(json.data.token);
       }
       if (json.data?.user) {
         setCurrentUser({
