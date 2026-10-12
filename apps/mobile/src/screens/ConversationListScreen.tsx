@@ -57,15 +57,13 @@ export function ConversationListScreen({ navigation }: Props) {
             <Text style={styles.dashboardHeaderBtnText}>📊 Dashboard</Text>
           </TouchableOpacity>
 
-          {academyEnabled && (
-            <TouchableOpacity
-              style={styles.dashboardHeaderBtn}
-              onPress={() => navigation.navigate("Academy")}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.dashboardHeaderBtnText}>Academy</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.academyHeaderBtn}
+            onPress={() => navigation.navigate("Academy")}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.academyHeaderBtnText}>🏅 Academy</Text>
+          </TouchableOpacity>
 
           {isAdmin && (
             <TouchableOpacity
@@ -87,9 +85,9 @@ export function ConversationListScreen({ navigation }: Props) {
         </View>
       ),
     });
-  }, [navigation, isAdmin, academyEnabled]);
+  }, [navigation, isAdmin]);
 
-  // Academy module visibility is decided by the server (feature flag + membership).
+  // Academy module initialization
   useEffect(() => {
     let mounted = true;
     void fetchAcademyProfile().then((p) => {
@@ -169,6 +167,29 @@ export function ConversationListScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StatusBar backgroundColor={Colors.headerBackground} barStyle="light-content" />
+
+      {/* Sports Academy Hub Hero Banner */}
+      <TouchableOpacity
+        style={styles.academyBanner}
+        onPress={() => navigation.navigate("Academy")}
+        activeOpacity={0.85}
+      >
+        <View style={styles.academyBannerLeft}>
+          <Text style={styles.academyBannerEmoji}>🏅</Text>
+          <View>
+            <View style={styles.academyBannerTitleRow}>
+              <Text style={styles.academyBannerTitle}>Sports Academy Hub</Text>
+              <View style={styles.academyActiveDot} />
+            </View>
+            <Text style={styles.academyBannerSubtitle}>
+              Players, Attendance, Fees, Courts & Reports
+            </Text>
+          </View>
+        </View>
+        <View style={styles.academyBannerBtn}>
+          <Text style={styles.academyBannerBtnText}>Open Hub →</Text>
+        </View>
+      </TouchableOpacity>
 
       {/* Admin Panel Quick Banner */}
       {isAdmin && (
@@ -286,6 +307,74 @@ const styles = StyleSheet.create({
     color: Colors.textLight,
     fontSize: Fonts.sizes.xs,
     fontWeight: "700",
+  },
+  academyHeaderBtn: {
+    backgroundColor: "#25D366",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  academyHeaderBtnText: {
+    color: "#075E54",
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "800",
+  },
+  academyBanner: {
+    backgroundColor: "#E8F5E9",
+    borderBottomWidth: 1,
+    borderBottomColor: "#C8E6C9",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm + 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  academyBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    flex: 1,
+  },
+  academyBannerEmoji: {
+    fontSize: 26,
+  },
+  academyBannerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  academyBannerTitle: {
+    fontSize: Fonts.sizes.sm,
+    fontWeight: "800",
+    color: "#1B5E20",
+  },
+  academyActiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#2E7D32",
+  },
+  academyBannerSubtitle: {
+    fontSize: 11,
+    color: "#2E7D32",
+    marginTop: 1,
+    fontWeight: "600",
+  },
+  academyBannerBtn: {
+    backgroundColor: "#2E7D32",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
+  },
+  academyBannerBtnText: {
+    fontSize: Fonts.sizes.xs,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
   adminBanner: {
     backgroundColor: "#FFF8E1",

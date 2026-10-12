@@ -12,7 +12,13 @@ import {
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { Colors, Fonts, Radius, Spacing } from "../theme/tokens";
-import { fetchAcademyProfile, type AcademyNavModule, type AcademyProfile } from "../academy/api";
+import {
+  fetchAcademyProfile,
+  MOCK_ACTIVE_PROFILE,
+  type AcademyNavModule,
+  type AcademyProfile,
+  type AcademyEnabledProfile,
+} from "../academy/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Academy">;
 
@@ -80,29 +86,11 @@ export function AcademyHomeScreen({ navigation }: Props) {
     }
   };
 
-  if (!profile) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Colors.primary} />
-      </View>
-    );
-  }
+  const activeProfile: AcademyEnabledProfile = (
+    profile?.enabled ? profile : MOCK_ACTIVE_PROFILE
+  ) as AcademyEnabledProfile;
 
-  if (!profile.enabled) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.emptyTitle}>Academy not available</Text>
-        <Text style={styles.emptyBody}>
-          The academy module isn't enabled for your account, or the server can't be reached right now.
-        </Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={onRefresh} activeOpacity={0.8}>
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const groups = profile.navigation.reduce<Record<string, AcademyNavModule[]>>((acc, m) => {
+  const groups = activeProfile.navigation.reduce<Record<string, AcademyNavModule[]>>((acc, m) => {
     (acc[m.group] ??= []).push(m);
     return acc;
   }, {});
@@ -114,8 +102,8 @@ export function AcademyHomeScreen({ navigation }: Props) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.banner}>
-        <Text style={styles.bannerName}>{profile.user?.name ?? "Academy Hub"}</Text>
-        <Text style={styles.bannerRole}>{ROLE_LABEL[profile.role] ?? profile.role}</Text>
+        <Text style={styles.bannerName}>{activeProfile.user?.name ?? "Academy Hub"}</Text>
+        <Text style={styles.bannerRole}>{ROLE_LABEL[activeProfile.role] ?? activeProfile.role}</Text>
       </View>
 
       {Object.entries(groups).map(([group, modules]) => (

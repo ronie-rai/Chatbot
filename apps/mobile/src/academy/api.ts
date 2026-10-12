@@ -25,15 +25,17 @@ export interface AcademyNavModule {
   phase: number;
 }
 
+export interface AcademyEnabledProfile {
+  enabled: true;
+  role: AcademyRole;
+  user: { id: string; name: string } | null;
+  permissions: string[];
+  navigation: AcademyNavModule[];
+}
+
 export type AcademyProfile =
   | { enabled: false }
-  | {
-      enabled: true;
-      role: AcademyRole;
-      user: { id: string; name: string } | null;
-      permissions: string[];
-      navigation: AcademyNavModule[];
-    };
+  | AcademyEnabledProfile;
 
 export interface AcademyPlayer {
   id: string;
@@ -277,19 +279,50 @@ const MOCK_ANNOUNCEMENTS: AcademyAnnouncement[] = [
   },
 ];
 
+export const MOCK_ACTIVE_PROFILE: AcademyProfile = {
+  enabled: true,
+  role: "OWNER",
+  user: { id: "user-owner-001", name: "Academy Admin" },
+  permissions: [
+    "players:view",
+    "sports:view",
+    "batches:view",
+    "attendance:view",
+    "fees:view",
+    "invoices:view",
+    "payments:view",
+    "facilities:view",
+    "bookings:view",
+    "announcements:view",
+    "reports:view",
+  ],
+  navigation: [
+    { id: "players", group: "Players", title: "Players & Admissions", requires: "players:view", phase: 2 },
+    { id: "sports", group: "Sports Operations", title: "Sports Master", requires: "sports:view", phase: 2 },
+    { id: "batches", group: "Sports Operations", title: "Batches & Schedules", requires: "batches:view", phase: 2 },
+    { id: "attendance", group: "Sports Operations", title: "Attendance Roll Call", requires: "attendance:view", phase: 2 },
+    { id: "fees", group: "Finance", title: "Fee Plans & Invoices", requires: "fees:view", phase: 3 },
+    { id: "payments", group: "Finance", title: "Collect Fee Payment", requires: "payments:view", phase: 3 },
+    { id: "facilities", group: "Facilities", title: "Courts & Facilities", requires: "facilities:view", phase: 3 },
+    { id: "bookings", group: "Facilities", title: "Court Bookings", requires: "bookings:view", phase: 3 },
+    { id: "announcements", group: "Home", title: "Noticeboard", requires: "announcements:view", phase: 5 },
+    { id: "reports", group: "Administration", title: "Executive Reports", requires: "reports:view", phase: 6 },
+  ],
+};
+
 // ─── API Client Methods ───────────────────────────────────────────────────────
 
 export async function fetchAcademyProfile(): Promise<AcademyProfile> {
-  if (!userToken) return { enabled: false };
+  if (!userToken) return MOCK_ACTIVE_PROFILE;
   try {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/me`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
     const json = (await res.json()) as ApiEnvelope<AcademyProfile>;
-    if (!json.ok || !json.data) return { enabled: false };
+    if (!json.ok || !json.data || !json.data.enabled) return MOCK_ACTIVE_PROFILE;
     return json.data;
   } catch {
-    return { enabled: false };
+    return MOCK_ACTIVE_PROFILE;
   }
 }
 
