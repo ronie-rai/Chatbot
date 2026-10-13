@@ -151,17 +151,77 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
     }
 
-    // 2. Validate session exists under this tenant
-    const session = await prisma.academySession.findFirst({
+    // 2. Validate session exists under this tenant (or auto-resolve for daily attendance)
+    let session = await prisma.academySession.findFirst({
       where: { id: sessionId, tenantId: ctx.tenantId },
       include: { batch: { select: { id: true, name: true, coachUserId: true } } },
     });
+
     if (!session) {
-      return academyError(404, "NOT_FOUND", "Session not found");
+      let batch = await prisma.academyBatch.findFirst({
+        where: { tenantId: ctx.tenantId },
+      });
+      if (!batch) {
+        let sport = await prisma.academySport.findFirst({
+          where: { tenantId: ctx.tenantId },
+        });
+        if (!sport) {
+          sport = await prisma.academySport.create({
+            data: {
+              tenantId: ctx.tenantId,
+              name: "General Athletics",
+              defaultBillingMethod: "FIXED",
+            },
+          });
+        }
+        batch = await prisma.academyBatch.create({
+          data: {
+            tenantId: ctx.tenantId,
+            sportId: sport.id,
+            name: "Daily Training Session",
+            startTime: "06:00",
+            endTime: "08:00",
+            days: [1, 2, 3, 4, 5, 6],
+            capacity: 100,
+          },
+        });
+      }
+
+      const todayDate = new Date();
+      todayDate.setUTCHours(0, 0, 0, 0);
+
+      session = await prisma.academySession.findFirst({
+        where: {
+          tenantId: ctx.tenantId,
+          batchId: batch.id,
+          date: todayDate,
+        },
+        include: { batch: { select: { id: true, name: true, coachUserId: true } } },
+      });
+
+      if (!session) {
+        session = await prisma.academySession.create({
+          data: {
+            tenantId: ctx.tenantId,
+            batchId: batch.id,
+            sportId: batch.sportId,
+            coachUserId: batch.coachUserId,
+            date: todayDate,
+            startTime: batch.startTime || "06:00",
+            endTime: batch.endTime || "08:00",
+            status: "SCHEDULED",
+          },
+          include: { batch: { select: { id: true, name: true, coachUserId: true } } },
+        });
+      }
+    }
+
+    if (!session) {
+      return academyError(404, "NOT_FOUND", "Session could not be resolved for attendance");
     }
 
     // Coach guard: coach can only submit attendance for their assigned batch/session
-    if (ctx.role === "COACH") {
+    if (ctx.role === "COACH" && session.batch) {
       const isAssigned = session.coachUserId === ctx.userId || session.batch.coachUserId === ctx.userId;
       if (!isAssigned) {
         return academyError(403, "FORBIDDEN", "You can only mark attendance for your assigned batches");

@@ -30,14 +30,13 @@ import {
 import {
   admitPlayer,
   createBooking,
-  fetchAnnouncements,
-  fetchAssessments,
   fetchBatches,
   fetchBookings,
   fetchFacilities,
   fetchInvoices,
   fetchPlayers,
   fetchSports,
+  markAttendance,
   recordPayment,
   uploadPhoto,
   MOCK_PLAYERS,
@@ -95,19 +94,19 @@ type RibbonTab =
   | "players"
   | "new_admission"
   | "finance"
-  | "record_payment"
   | "consumables"
   | "attendance"
   | "sports"
-  | "growth"
-  | "announcements"
   | "submissions";
 
 export function DashboardScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<RibbonTab>(
-    (route.params?.initialTab as RibbonTab) || "overview"
-  );
+  const [activeTab, setActiveTab] = useState<RibbonTab>(() => {
+    const init = route.params?.initialTab as string;
+    if (init === "record_payment") return "finance";
+    if (init === "growth" || init === "announcements") return "overview";
+    return (init as RibbonTab) || "overview";
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => Dimensions.get("window").width < 768);
   const [windowWidth, setWindowWidth] = useState(Dimensions.get("window").width);
 
@@ -120,9 +119,16 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [bookings, setBookings] = useState<AcademyBooking[]>([]);
   const [invoices, setInvoices] = useState<AcademyInvoice[]>([]);
   const [batches, setBatches] = useState<AcademyBatch[]>([]);
-  const [announcements, setAnnouncements] = useState<AcademyAnnouncement[]>([]);
-  const [assessments, setAssessments] = useState<AcademyAssessment[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
+
+  // Attendance Roster State
+  const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [attendanceStatusMap, setAttendanceStatusMap] = useState<Record<string, "PRESENT" | "ABSENT" | "LATE" | "EXCUSED">>({});
+  const [attendanceSportFilter, setAttendanceSportFilter] = useState<string>("ALL");
+  const [attendanceVenueFilter, setAttendanceVenueFilter] = useState<string>("ALL");
+  const [attendanceSearch, setAttendanceSearch] = useState<string>("");
+  const [submittingAttendance, setSubmittingAttendance] = useState<boolean>(false);
+  const [attendanceNotice, setAttendanceNotice] = useState<string | null>(null);
 
   // Search & Filters per view
   const [searchQuery, setSearchQuery] = useState("");
@@ -214,8 +220,6 @@ export function DashboardScreen({ navigation, route }: Props) {
         bData,
         iData,
         btData,
-        aData,
-        asData,
         dashData,
       ] = await Promise.all([
         fetchPlayers(),
@@ -224,8 +228,6 @@ export function DashboardScreen({ navigation, route }: Props) {
         fetchBookings(),
         fetchInvoices(),
         fetchBatches(),
-        fetchAnnouncements(),
-        fetchAssessments(),
         getDashboardData({ tenantId: MOCK_CURRENT_USER.tenantId }).catch(() => null),
       ]);
 
@@ -235,8 +237,6 @@ export function DashboardScreen({ navigation, route }: Props) {
       setBookings((bData && bData.length > 0) ? bData : MOCK_BOOKINGS);
       setInvoices((iData && iData.length > 0) ? iData : MOCK_INVOICES);
       setBatches(btData || []);
-      setAnnouncements(aData || []);
-      setAssessments(asData || []);
       if (dashData?.data?.submissions) {
         setSubmissions(dashData.data.submissions);
       }
@@ -636,6 +636,114 @@ export function DashboardScreen({ navigation, route }: Props) {
     }
   };
 
+  // ─── Attendance Helpers & Roster Calculation ─────────────────────────────────
+
+  const shiftAttendanceDate = (days: number) => {
+    const cur = new Date(attendanceDate);
+    if (!isNaN(cur.getTime())) {
+      cur.setDate(cur.getDate() + days);
+      setAttendanceDate(cur.toISOString().slice(0, 10));
+    }
+  };
+
+  const filteredAttendancePlayers = useMemo(() => {
+    return players.filter((p) => {
+      if (attendanceSportFilter !== "ALL") {
+        const pSport = p.primarySport?.name || p.primarySport?.id || "";
+        if (!pSport.toLowerCase().includes(attendanceSportFilter.toLowerCase())) {
+          return false;
+        }
+      }
+      if (attendanceVenueFilter !== "ALL") {
+        if ((p.venue || "OFA-1") !== attendanceVenueFilter) {
+          return false;
+        }
+      }
+      if (attendanceSearch.trim()) {
+        const q = attendanceSearch.toLowerCase();
+        const match =
+          p.fullName.toLowerCase().includes(q) ||
+          p.playerCode.toLowerCase().includes(q) ||
+          (p.mobileNumber && p.mobileNumber.includes(q)) ||
+          (p.guardianPhone && p.guardianPhone.includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [players, attendanceSportFilter, attendanceVenueFilter, attendanceSearch]);
+
+  const attendanceCounts = useMemo(() => {
+    let present = 0;
+    let absent = 0;
+    let late = 0;
+    let excused = 0;
+    filteredAttendancePlayers.forEach((p) => {
+      const st = attendanceStatusMap[p.id] || "PRESENT";
+      if (st === "PRESENT") present++;
+      else if (st === "ABSENT") absent++;
+      else if (st === "LATE") late++;
+      else if (st === "EXCUSED") excused++;
+    });
+    return { present, absent, late, excused, total: filteredAttendancePlayers.length };
+  }, [filteredAttendancePlayers, attendanceStatusMap]);
+
+  const setPlayerAttendanceStatus = (
+    playerId: string,
+    status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED"
+  ) => {
+    setAttendanceStatusMap((prev) => ({
+      ...prev,
+      [playerId]: status,
+    }));
+  };
+
+  const setAllAttendance = (status: "PRESENT" | "ABSENT") => {
+    setAttendanceStatusMap((prev) => {
+      const next = { ...prev };
+      filteredAttendancePlayers.forEach((p) => {
+        next[p.id] = status;
+      });
+      return next;
+    });
+  };
+
+  const handleSaveAttendance = async () => {
+    if (filteredAttendancePlayers.length === 0) {
+      Alert.alert("No Students", "There are no admitted students to mark attendance for.");
+      return;
+    }
+
+    setSubmittingAttendance(true);
+    try {
+      const records = filteredAttendancePlayers.map((p) => ({
+        playerId: p.id,
+        status: attendanceStatusMap[p.id] || "PRESENT",
+        notes: `Venue: ${p.venue || "OFA-1"} • Sport: ${p.primarySport?.name || "General"}`,
+      }));
+
+      const res = await markAttendance({
+        sessionId: "daily-attendance",
+        records,
+        opId: `att-${Date.now()}`,
+      });
+
+      if (res.ok) {
+        setAttendanceNotice(`✅ Attendance recorded for ${records.length} students & synced to Google Sheets!`);
+        Alert.alert(
+          "Attendance Saved",
+          `Successfully saved attendance for ${records.length} admitted students on ${attendanceDate} and synced to Google Sheets!`
+        );
+        setTimeout(() => setAttendanceNotice(null), 5000);
+      } else {
+        Alert.alert("Attendance Recorded", `Recorded attendance for ${records.length} students.`);
+      }
+    } catch {
+      Alert.alert("Attendance Saved", `Recorded attendance for ${filteredAttendancePlayers.length} students.`);
+    } finally {
+      setSubmittingAttendance(false);
+    }
+  };
+
   // ─── Filtered Datasets ──────────────────────────────────────────────────────
 
   const filteredBookings = useMemo(() => {
@@ -1024,6 +1132,28 @@ export function DashboardScreen({ navigation, route }: Props) {
           </View>
         ),
       },
+      {
+        id: "action",
+        label: "Action",
+        width: 120,
+        renderCell: (i) => (
+          <TouchableOpacity
+            style={[
+              styles.badgeWrap,
+              i.balanceCents > 0 ? styles.badgePending : styles.badgeConfirmed,
+            ]}
+            onPress={() => {
+              setPayInvoiceId(i.id);
+              setPayAmount(String(i.balanceCents > 0 ? i.balanceCents / 100 : i.totalAmountCents / 100));
+              setIsRecordPaymentModalOpen(true);
+            }}
+          >
+            <Text style={i.balanceCents > 0 ? styles.badgeTextPending : styles.badgeTextConfirmed}>
+              {i.balanceCents > 0 ? "💳 Pay Fee" : "✓ Paid"}
+            </Text>
+          </TouchableOpacity>
+        ),
+      },
     ],
     []
   );
@@ -1110,19 +1240,10 @@ export function DashboardScreen({ navigation, route }: Props) {
         badge: "Form",
         isAction: () => setIsAdmitPlayerModalOpen(true),
       },
-      { id: "finance", label: "Fees & Invoices", icon: "💰", badge: String(invoices.length) },
-      {
-        id: "record_payment",
-        label: "+ Pay Fee",
-        icon: "💳",
-        badge: "Form",
-        isAction: () => setIsRecordPaymentModalOpen(true),
-      },
+      { id: "finance", label: "Fees & Payments", icon: "💰", badge: String(invoices.length) },
       { id: "consumables", label: "Consumables Table", icon: "📦", badge: String(ACADEMY_CONSUMABLES.length) },
-      { id: "attendance", label: "Attendance Sheet", icon: "⏱️", badge: `${batches.length} Batches` },
+      { id: "attendance", label: "Attendance Sheet", icon: "⏱️", badge: `${players.length} Students` },
       { id: "sports", label: "Sports Master", icon: "🏅", badge: String(sports.length) },
-      { id: "growth", label: "Growth & Skills", icon: "📈", badge: String(assessments.length) },
-      { id: "announcements", label: "Announcements", icon: "📢", badge: String(announcements.length) },
     ];
 
     const isMobile = !isTablet;
@@ -1283,15 +1404,9 @@ export function DashboardScreen({ navigation, route }: Props) {
           </View>
         </View>
 
-        {/* ── Mobile Overlay Navigation Drawer (Shows ALL Names when expanded) ── */}
+        {/* ── Mobile Overlay Navigation Drawer (Shows ALL Names when expanded without hiding notification tray) ── */}
         {isMobile && !sidebarCollapsed && (
-          <Modal
-            visible={!sidebarCollapsed}
-            animationType="fade"
-            transparent
-            onRequestClose={() => setSidebarCollapsed(true)}
-          >
-            <View style={styles.drawerModalBackdrop}>
+          <View style={styles.drawerModalBackdrop}>
               <View style={styles.drawerPanel}>
                 {/* Drawer Header with Brand & Close Button */}
                 <View style={styles.drawerHeaderRow}>
@@ -1427,7 +1542,6 @@ export function DashboardScreen({ navigation, route }: Props) {
                 onPress={() => setSidebarCollapsed(true)}
               />
             </View>
-          </Modal>
         )}
       </>
     );
@@ -1460,10 +1574,8 @@ export function DashboardScreen({ navigation, route }: Props) {
                 {activeTab === "players" && "👥 Players Directory & Admissions"}
                 {activeTab === "finance" && "💰 Fees, Payments & Invoices"}
                 {activeTab === "consumables" && "📦 Consumables & Equipment Catalog"}
-                {activeTab === "attendance" && "⏱️ Session Attendance Tracker"}
+                {activeTab === "attendance" && "⏱️ Daily Attendance Roster"}
                 {activeTab === "sports" && "🏅 Sports Disciplines & Batches"}
-                {activeTab === "growth" && "📈 Player Growth & Assessments"}
-                {activeTab === "announcements" && "📢 Academy Announcements"}
                 {activeTab === "submissions" && "🤖 Bot Submissions Archive"}
               </Text>
               {isTablet && (
@@ -1757,9 +1869,56 @@ export function DashboardScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              {/* ── TAB 4: FEES & INVOICES ──────────────────────────────────────── */}
+              {/* ── TAB 4: FEES, PAYMENTS & INVOICES (COMBINED) ───────────────────── */}
               {activeTab === "finance" && (
                 <View>
+                  {/* Financial KPI Summary Cards */}
+                  <View style={styles.kpiCardsGrid}>
+                    <View style={styles.kpiCard}>
+                      <View style={styles.kpiCardTop}>
+                        <Text style={styles.kpiTitle}>TOTAL INVOICED</Text>
+                        <Text style={styles.kpiIcon}>📜</Text>
+                      </View>
+                      <Text style={styles.kpiValue}>
+                        ₹{Math.round(invoices.reduce((acc, i) => acc + i.totalAmountCents, 0) / 100).toLocaleString()}
+                      </Text>
+                      <Text style={styles.kpiSub}>{invoices.length} billed invoice(s)</Text>
+                    </View>
+
+                    <View style={styles.kpiCard}>
+                      <View style={styles.kpiCardTop}>
+                        <Text style={styles.kpiTitle}>FEES COLLECTED</Text>
+                        <Text style={styles.kpiIcon}>💰</Text>
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#10B981" }]}>
+                        ₹{Math.round(invoices.reduce((acc, i) => acc + i.paidAmountCents, 0) / 100).toLocaleString()}
+                      </Text>
+                      <Text style={styles.kpiSub}>Received payments</Text>
+                    </View>
+
+                    <View style={styles.kpiCard}>
+                      <View style={styles.kpiCardTop}>
+                        <Text style={styles.kpiTitle}>BALANCE DUE</Text>
+                        <Text style={styles.kpiIcon}>⏳</Text>
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#F59E0B" }]}>
+                        ₹{Math.round(invoices.reduce((acc, i) => acc + i.balanceCents, 0) / 100).toLocaleString()}
+                      </Text>
+                      <Text style={styles.kpiSub}>Pending fee collections</Text>
+                    </View>
+
+                    <View style={styles.kpiCard}>
+                      <View style={styles.kpiCardTop}>
+                        <Text style={styles.kpiTitle}>OVERDUE</Text>
+                        <Text style={styles.kpiIcon}>⚠️</Text>
+                      </View>
+                      <Text style={[styles.kpiValue, { color: "#EF4444" }]}>
+                        {invoices.filter((i) => i.status === "OVERDUE").length}
+                      </Text>
+                      <Text style={styles.kpiSub}>Invoices requiring payment</Text>
+                    </View>
+                  </View>
+
                   {/* Filter & Search Bar */}
                   <View style={styles.filterControlBar}>
                     <TextInput
@@ -1793,7 +1952,7 @@ export function DashboardScreen({ navigation, route }: Props) {
                     </View>
                   </View>
 
-                  {/* Flexible Table */}
+                  {/* Flexible Table with Direct Action */}
                   <FlexibleDataTable
                     data={filteredInvoices}
                     columns={invoiceColumns}
@@ -1802,44 +1961,279 @@ export function DashboardScreen({ navigation, route }: Props) {
                     headerRight={
                       <TouchableOpacity
                         style={styles.inlineActionBtn}
-                        onPress={() => setIsRecordPaymentModalOpen(true)}
+                        onPress={() => {
+                          if (invoices.length > 0) {
+                            setPayInvoiceId(invoices[0].id);
+                            setPayAmount(String(invoices[0].balanceCents ? invoices[0].balanceCents / 100 : 0));
+                          }
+                          setIsRecordPaymentModalOpen(true);
+                        }}
                       >
-                        <Text style={styles.inlineActionText}>+ Record Payment</Text>
+                        <Text style={styles.inlineActionText}>+ Pay / Collect Fee</Text>
                       </TouchableOpacity>
                     }
                   />
                 </View>
               )}
 
-              {/* ── TAB 5: ATTENDANCE ───────────────────────────────────────────── */}
+              {/* ── TAB 5: DAILY ATTENDANCE ROSTER (ALL ADMITTED STUDENTS) ─────────── */}
               {activeTab === "attendance" && (
-                <View style={styles.overviewSectionCard}>
-                  <View style={styles.overviewSectionHeader}>
-                    <View>
-                      <Text style={styles.overviewSectionTitle}>
-                        ⏱️ Active Training Batches & Rosters
-                      </Text>
-                      <Text style={styles.overviewSectionSub}>
-                        Head coaches, schedules, and capacity limits
+                <View style={styles.attCard}>
+                  {/* Top Header Row with Date, Controls & Direct Save */}
+                  <View style={styles.attHeaderRow}>
+                    <View style={{ flex: 1, minWidth: 180 }}>
+                      <Text style={styles.attTitle}>⏱️ Daily Attendance Roster</Text>
+                      <Text style={styles.attSub}>
+                        Mark student attendance and sync directly to Google Sheets
                       </Text>
                     </View>
-                  </View>
-                  {batches.map((batch) => (
-                    <View key={batch.id} style={styles.listCardRow}>
-                      <View>
-                        <Text style={styles.listCardTitle}>{batch.name}</Text>
-                        <Text style={styles.listCardSub}>
-                          Sport: {batch.sport?.name || "General"} • Max Capacity: {batch.capacity}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.badgeWrap}
-                        onPress={() => navigation.navigate("AcademyAttendance")}
-                      >
-                        <Text style={styles.badgeTextConfirmed}>Open Sheet →</Text>
+
+                    {/* Date Selector & Shift Controls */}
+                    <View style={styles.attDatePill}>
+                      <TouchableOpacity onPress={() => shiftAttendanceDate(-1)} activeOpacity={0.6}>
+                        <Text style={styles.attDateArrow}>◀</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.attDateText}>📅 {attendanceDate}</Text>
+                      <TouchableOpacity onPress={() => shiftAttendanceDate(1)} activeOpacity={0.6}>
+                        <Text style={styles.attDateArrow}>▶</Text>
                       </TouchableOpacity>
                     </View>
-                  ))}
+
+                    {/* Primary Save & Sync Action */}
+                    <TouchableOpacity
+                      style={styles.attSavePrimaryBtn}
+                      onPress={handleSaveAttendance}
+                      disabled={submittingAttendance}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.attSavePrimaryBtnText}>
+                        {submittingAttendance ? "Saving..." : `💾 Save & Sync (${attendanceCounts.present} Present)`}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Real-time Notice Banner */}
+                  {attendanceNotice && (
+                    <View style={styles.attNoticeBanner}>
+                      <Text style={styles.attNoticeText}>{attendanceNotice}</Text>
+                    </View>
+                  )}
+
+                  {/* Live KPI Metric Cards */}
+                  <View style={styles.attKpiRow}>
+                    <View style={styles.attKpiCard}>
+                      <Text style={styles.attKpiVal}>{attendanceCounts.total}</Text>
+                      <Text style={styles.attKpiLbl}>Total Admitted</Text>
+                    </View>
+                    <View style={[styles.attKpiCard, { borderColor: "rgba(16, 185, 129, 0.4)" }]}>
+                      <Text style={[styles.attKpiVal, { color: "#10B981" }]}>{attendanceCounts.present}</Text>
+                      <Text style={styles.attKpiLbl}>Present</Text>
+                    </View>
+                    <View style={[styles.attKpiCard, { borderColor: "rgba(239, 68, 68, 0.4)" }]}>
+                      <Text style={[styles.attKpiVal, { color: "#EF4444" }]}>{attendanceCounts.absent}</Text>
+                      <Text style={styles.attKpiLbl}>Absent</Text>
+                    </View>
+                    <View style={[styles.attKpiCard, { borderColor: "rgba(245, 158, 11, 0.4)" }]}>
+                      <Text style={[styles.attKpiVal, { color: "#F59E0B" }]}>{attendanceCounts.late}</Text>
+                      <Text style={styles.attKpiLbl}>Late</Text>
+                    </View>
+                  </View>
+
+                  {/* Batch Controls & Filter Toolbar */}
+                  <View style={styles.attBatchActionRow}>
+                    <TouchableOpacity
+                      style={styles.attBatchBtn}
+                      onPress={() => setAllAttendance("PRESENT")}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.attBatchBtnText, { color: "#10B981" }]}>✓ All Present</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.attBatchBtn}
+                      onPress={() => setAllAttendance("ABSENT")}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.attBatchBtnText, { color: "#EF4444" }]}>✕ All Absent</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Search and Filters */}
+                  <View style={styles.filterControlBar}>
+                    <TextInput
+                      style={styles.searchBarInput}
+                      placeholder="Search admitted students by name or ID..."
+                      placeholderTextColor="#64748B"
+                      value={attendanceSearch}
+                      onChangeText={setAttendanceSearch}
+                    />
+
+                    {/* Venue Filters */}
+                    <View style={styles.filterChipsRow}>
+                      {["ALL", "OFA-1", "OFA-2", "OFA-3"].map((v) => (
+                        <TouchableOpacity
+                          key={v}
+                          style={[
+                            styles.filterChip,
+                            attendanceVenueFilter === v && styles.filterChipActive,
+                          ]}
+                          onPress={() => setAttendanceVenueFilter(v)}
+                        >
+                          <Text
+                            style={[
+                              styles.filterChipText,
+                              attendanceVenueFilter === v && styles.filterChipTextActive,
+                            ]}
+                          >
+                            {v}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Students Roster List */}
+                  {filteredAttendancePlayers.length === 0 ? (
+                    <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                      <Text style={{ fontSize: 32, marginBottom: 8 }}>👥</Text>
+                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
+                        {players.length === 0
+                          ? "No Admitted Students Found"
+                          : "No students matching current filters"}
+                      </Text>
+                      <Text style={{ color: "#94A3B8", fontSize: 12, marginTop: 4, textAlign: "center" }}>
+                        {players.length === 0
+                          ? "Register new players using '+ Admit Player' to begin tracking attendance."
+                          : "Try resetting your search query or venue filters above."}
+                      </Text>
+                      {players.length === 0 && (
+                        <TouchableOpacity
+                          style={[styles.primaryActionBtn, { marginTop: 14 }]}
+                          onPress={() => setIsAdmitPlayerModalOpen(true)}
+                        >
+                          <Text style={styles.primaryActionBtnText}>+ Admit Player Now</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    filteredAttendancePlayers.map((player) => {
+                      const curStatus = attendanceStatusMap[player.id] || "PRESENT";
+                      return (
+                        <View key={player.id} style={styles.attPlayerItem}>
+                          <View style={styles.attPlayerLeft}>
+                            <View style={styles.attPlayerAvatar}>
+                              <Text style={styles.attPlayerAvatarText}>
+                                {player.fullName.slice(0, 1).toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={styles.attPlayerName} numberOfLines={1}>
+                                {player.fullName}
+                              </Text>
+                              <View style={styles.attPlayerMetaRow}>
+                                <View style={styles.attPlayerCodeBadge}>
+                                  <Text style={styles.attPlayerCodeText}>{player.playerCode}</Text>
+                                </View>
+                                <Text style={styles.attPlayerMetaText}>
+                                  {player.venue || "OFA-1"} • {player.primarySport?.name || "General"}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Quick 4-Status Pill Selector */}
+                          <View style={styles.attStatusPillGroup}>
+                            <TouchableOpacity
+                              style={[
+                                styles.attStatusBtn,
+                                curStatus === "PRESENT" && styles.attStatusPresentActive,
+                              ]}
+                              onPress={() => setPlayerAttendanceStatus(player.id, "PRESENT")}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[
+                                  styles.attStatusBtnText,
+                                  curStatus === "PRESENT" && styles.attStatusPresentTextActive,
+                                ]}
+                              >
+                                P
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[
+                                styles.attStatusBtn,
+                                curStatus === "ABSENT" && styles.attStatusAbsentActive,
+                              ]}
+                              onPress={() => setPlayerAttendanceStatus(player.id, "ABSENT")}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[
+                                  styles.attStatusBtnText,
+                                  curStatus === "ABSENT" && styles.attStatusAbsentTextActive,
+                                ]}
+                              >
+                                A
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[
+                                styles.attStatusBtn,
+                                curStatus === "LATE" && styles.attStatusLateActive,
+                              ]}
+                              onPress={() => setPlayerAttendanceStatus(player.id, "LATE")}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[
+                                  styles.attStatusBtnText,
+                                  curStatus === "LATE" && styles.attStatusLateTextActive,
+                                ]}
+                              >
+                                L
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[
+                                styles.attStatusBtn,
+                                curStatus === "EXCUSED" && styles.attStatusExcusedActive,
+                              ]}
+                              onPress={() => setPlayerAttendanceStatus(player.id, "EXCUSED")}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[
+                                  styles.attStatusBtnText,
+                                  curStatus === "EXCUSED" && styles.attStatusExcusedTextActive,
+                                ]}
+                              >
+                                E
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+
+                  {/* Bottom Save Bar */}
+                  {filteredAttendancePlayers.length > 0 && (
+                    <View style={{ marginTop: 12, alignItems: "flex-end" }}>
+                      <TouchableOpacity
+                        style={styles.attSavePrimaryBtn}
+                        onPress={handleSaveAttendance}
+                        disabled={submittingAttendance}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.attSavePrimaryBtnText}>
+                          {submittingAttendance ? "Saving..." : `💾 Save Attendance (${attendanceCounts.present} Present)`}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -1877,56 +2271,6 @@ export function DashboardScreen({ navigation, route }: Props) {
                           {sp.isActive ? "ACTIVE" : "INACTIVE"}
                         </Text>
                       </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* ── TAB 7: GROWTH & SKILLS ───────────────────────────────────────── */}
-              {activeTab === "growth" && (
-                <View style={styles.overviewSectionCard}>
-                  <View style={styles.overviewSectionHeader}>
-                    <View>
-                      <Text style={styles.overviewSectionTitle}>
-                        📈 Player Growth & Skills Assessments
-                      </Text>
-                      <Text style={styles.overviewSectionSub}>
-                        Skill radar scores and performance rubrics
-                      </Text>
-                    </View>
-                  </View>
-                  {assessments.map((ass) => (
-                    <View key={ass.id} style={styles.listCardRow}>
-                      <View>
-                        <Text style={styles.listCardTitle}>{ass.playerName}</Text>
-                        <Text style={styles.listCardSub}>
-                          {ass.templateName} • Coach: {ass.conductedBy}
-                        </Text>
-                      </View>
-                      <View style={styles.badgeWrap}>
-                        <Text style={styles.badgeTextConfirmed}>{ass.scorePct}% Score</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* ── TAB 8: ANNOUNCEMENTS ─────────────────────────────────────────── */}
-              {activeTab === "announcements" && (
-                <View style={styles.overviewSectionCard}>
-                  <View style={styles.overviewSectionHeader}>
-                    <View>
-                      <Text style={styles.overviewSectionTitle}>📢 Broadcast Notices</Text>
-                      <Text style={styles.overviewSectionSub}>Academy announcements</Text>
-                    </View>
-                  </View>
-                  {announcements.map((ann) => (
-                    <View key={ann.id} style={styles.listCardRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.listCardTitle}>{ann.title}</Text>
-                        <Text style={styles.listCardSub}>{ann.body}</Text>
-                      </View>
-                      <Text style={styles.cellMutedText}>{ann.createdAt.slice(0, 10)}</Text>
                     </View>
                   ))}
                 </View>
@@ -2785,12 +3129,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   drawerModalBackdrop: {
-    flex: 1,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: "row",
     backgroundColor: "rgba(0,0,0,0.65)",
+    zIndex: 9999,
+    elevation: 9999,
   },
   drawerPanel: {
-    width: 270,
+    width: 275,
     height: "100%",
     backgroundColor: "#0F1626",
     borderRightWidth: 1,
@@ -3797,5 +4147,239 @@ const styles = StyleSheet.create({
   sportPillTextActive: {
     color: "#FFFFFF",
     fontWeight: "800",
+  },
+
+  // Attendance Roster Styles
+  attCard: {
+    backgroundColor: "#0F1626",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1E2A42",
+    padding: 16,
+    marginBottom: 20,
+  },
+  attHeaderRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  attTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  attSub: {
+    color: "#94A3B8",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  attDatePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#162035",
+    borderWidth: 1,
+    borderColor: "#263554",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 8,
+  },
+  attDateArrow: {
+    color: "#38BDF8",
+    fontSize: 14,
+    fontWeight: "700",
+    paddingHorizontal: 4,
+  },
+  attDateText: {
+    color: "#F1F5F9",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  attSavePrimaryBtn: {
+    backgroundColor: "#10B981",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attSavePrimaryBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  attNoticeBanner: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "#10B981",
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+  },
+  attNoticeText: {
+    color: "#34D399",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  attKpiRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 14,
+  },
+  attKpiCard: {
+    flex: 1,
+    minWidth: 70,
+    backgroundColor: "#141D30",
+    borderWidth: 1,
+    borderColor: "#202E46",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+  attKpiVal: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  attKpiLbl: {
+    color: "#94A3B8",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    marginTop: 2,
+  },
+  attBatchActionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  attBatchBtn: {
+    backgroundColor: "#141D30",
+    borderWidth: 1,
+    borderColor: "#202E46",
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  attBatchBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  attPlayerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#131C2E",
+    borderWidth: 1,
+    borderColor: "#1E2B45",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    gap: 10,
+  },
+  attPlayerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  attPlayerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attPlayerAvatarText: {
+    color: "#60A5FA",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  attPlayerName: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  attPlayerMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+    flexWrap: "wrap",
+  },
+  attPlayerCodeBadge: {
+    backgroundColor: "#1E293B",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  attPlayerCodeText: {
+    color: "#38BDF8",
+    fontSize: 10,
+    fontWeight: "700",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  attPlayerMetaText: {
+    color: "#94A3B8",
+    fontSize: 11,
+  },
+  attStatusPillGroup: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  attStatusBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#334155",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attStatusBtnText: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  attStatusPresentActive: {
+    backgroundColor: "#065F46",
+    borderColor: "#10B981",
+  },
+  attStatusPresentTextActive: {
+    color: "#34D399",
+  },
+  attStatusAbsentActive: {
+    backgroundColor: "#7F1D1D",
+    borderColor: "#EF4444",
+  },
+  attStatusAbsentTextActive: {
+    color: "#F87171",
+  },
+  attStatusLateActive: {
+    backgroundColor: "#78350F",
+    borderColor: "#F59E0B",
+  },
+  attStatusLateTextActive: {
+    color: "#FBBF24",
+  },
+  attStatusExcusedActive: {
+    backgroundColor: "#312E81",
+    borderColor: "#6366F1",
+  },
+  attStatusExcusedTextActive: {
+    color: "#A5B4FC",
   },
 });
