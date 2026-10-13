@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -193,9 +194,34 @@ export function BookingsScreen() {
         <View style={styles.cardHeader}>
           <View>
             <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.bookedByText}>
-              👤 {item.bookedBy} {item.contactPhone ? `(${item.contactPhone})` : ""}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+              <Text style={styles.bookedByText}>👤 {item.bookedBy}</Text>
+              {item.contactPhone ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    const cleaned = item.contactPhone!.replace(/[^\d+]/g, "");
+                    if (cleaned) Linking.openURL(`tel:${cleaned}`).catch(() => {});
+                  }}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: "rgba(14, 165, 233, 0.12)",
+                    borderWidth: 1,
+                    borderColor: "rgba(56, 189, 248, 0.4)",
+                    borderRadius: 6,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    gap: 3,
+                  }}
+                >
+                  <Text style={{ fontSize: 10 }}>📞</Text>
+                  <Text style={{ color: "#38BDF8", fontSize: 11, fontWeight: "700", textDecorationLine: "underline" }}>
+                    {item.contactPhone}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
           <View style={styles.statusBadge}>
             <Text style={styles.statusText}>{item.status}</Text>

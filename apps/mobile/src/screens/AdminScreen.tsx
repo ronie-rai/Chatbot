@@ -930,9 +930,36 @@ export function AdminScreen({ navigation }: Props) {
                     </View>
 
                     <View style={styles.subDataPreview}>
-                      <Text style={styles.subDataLine}>
-                        📱 Phone Key: <Text style={{ fontWeight: "700" }}>{sub.userPhone || "N/A"}</Text>
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                        <Text style={styles.subDataLine}>📱 Phone Key:</Text>
+                        {sub.userPhone ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              const cleaned = sub.userPhone.replace(/[^\d+]/g, "");
+                              if (cleaned) Linking.openURL(`tel:${cleaned}`).catch(() => {});
+                            }}
+                            activeOpacity={0.7}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              backgroundColor: "rgba(14, 165, 233, 0.12)",
+                              borderWidth: 1,
+                              borderColor: "rgba(56, 189, 248, 0.4)",
+                              borderRadius: 6,
+                              paddingHorizontal: 6,
+                              paddingVertical: 1,
+                              gap: 3,
+                            }}
+                          >
+                            <Text style={{ fontSize: 9 }}>📞</Text>
+                            <Text style={{ color: "#38BDF8", fontSize: 11, fontWeight: "700", textDecorationLine: "underline" }}>
+                              {sub.userPhone}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={{ color: "#64748B", fontSize: 12 }}>N/A</Text>
+                        )}
+                      </View>
                       <Text style={styles.subDataLine}>
                         📋 Sheet Tab: <Text style={{ fontWeight: "700" }}>{sub.sheetName || sub.templateCommand}</Text>
                       </Text>

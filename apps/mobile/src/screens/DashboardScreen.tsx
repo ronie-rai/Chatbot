@@ -5,6 +5,7 @@ import {
   Dimensions,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -744,6 +745,42 @@ export function DashboardScreen({ navigation, route }: Props) {
     }
   };
 
+  // ─── Clickable Phone Dialer Integration ──────────────────────────────────────
+  const handleDialPhone = useCallback((phone?: string | null) => {
+    if (!phone) return;
+    const cleaned = phone.replace(/[^\d+]/g, "");
+    if (!cleaned) return;
+    Linking.openURL(`tel:${cleaned}`).catch(() => {
+      Alert.alert("Dialer Unavailable", `Could not launch phone dialer for ${phone}`);
+    });
+  }, []);
+
+  const ClickablePhone = ({
+    phone,
+    label,
+    style,
+  }: {
+    phone?: string | null;
+    label?: string;
+    style?: any;
+  }) => {
+    if (!phone || phone === "—" || phone === "N/A") {
+      return <Text style={styles.cellMutedText}>—</Text>;
+    }
+    return (
+      <TouchableOpacity
+        style={[styles.clickablePhonePill, style]}
+        onPress={() => handleDialPhone(phone)}
+        activeOpacity={0.65}
+      >
+        <Text style={styles.clickablePhoneIcon}>📞</Text>
+        <Text style={styles.clickablePhoneText} numberOfLines={1}>
+          {label || phone}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
   // ─── Filtered Datasets ──────────────────────────────────────────────────────
 
   const filteredBookings = useMemo(() => {
@@ -867,13 +904,18 @@ export function DashboardScreen({ navigation, route }: Props) {
       },
       {
         id: "customer",
-        label: "Booked By",
-        width: 140,
+        label: "Booked By & Phone",
+        width: 155,
         sortValue: (b) => b.bookedBy || "",
         renderCell: (b) => (
-          <Text style={styles.cellText} numberOfLines={1}>
-            {b.bookedBy || "Walk-in Guest"}
-          </Text>
+          <View>
+            <Text style={styles.cellBoldText} numberOfLines={1}>
+              {b.bookedBy || "Walk-in Guest"}
+            </Text>
+            {b.contactPhone ? (
+              <ClickablePhone phone={b.contactPhone} style={{ marginTop: 2 }} />
+            ) : null}
+          </View>
         ),
       },
       {
@@ -979,12 +1021,8 @@ export function DashboardScreen({ navigation, route }: Props) {
       {
         id: "contact",
         label: "Mobile / Contact",
-        width: 130,
-        renderCell: (p) => (
-          <Text style={styles.cellText}>
-            {p.mobileNumber || p.guardianPhone || "—"}
-          </Text>
-        ),
+        width: 145,
+        renderCell: (p) => <ClickablePhone phone={p.mobileNumber || p.guardianPhone} />,
       },
       {
         id: "fee",
@@ -1047,14 +1085,21 @@ export function DashboardScreen({ navigation, route }: Props) {
       },
       {
         id: "player",
-        label: "Player Name",
-        width: 160,
+        label: "Player & Contact",
+        width: 170,
         sortValue: (i) => i.player?.fullName || "",
-        renderCell: (i) => (
-          <Text style={styles.cellBoldText} numberOfLines={1}>
-            {i.player?.fullName || "Academy Player"}
-          </Text>
-        ),
+        renderCell: (i) => {
+          const matched = players.find((p) => p.id === i.playerId);
+          const ph = i.player?.guardianPhone || matched?.guardianPhone || matched?.mobileNumber;
+          return (
+            <View>
+              <Text style={styles.cellBoldText} numberOfLines={1}>
+                {i.player?.fullName || matched?.fullName || "Academy Player"}
+              </Text>
+              {ph ? <ClickablePhone phone={ph} style={{ marginTop: 2 }} /> : null}
+            </View>
+          );
+        },
       },
       {
         id: "due",
@@ -1155,7 +1200,7 @@ export function DashboardScreen({ navigation, route }: Props) {
         ),
       },
     ],
-    []
+    [players]
   );
 
   const consumableColumns: ColumnDef<ConsumableItem>[] = useMemo(
@@ -2136,6 +2181,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                                 <Text style={styles.attPlayerMetaText}>
                                   {player.venue || "OFA-1"} • {player.primarySport?.name || "General"}
                                 </Text>
+                                {(player.mobileNumber || player.guardianPhone) ? (
+                                  <ClickablePhone phone={player.mobileNumber || player.guardianPhone} />
+                                ) : null}
                               </View>
                             </View>
                           </View>
@@ -2291,13 +2339,16 @@ export function DashboardScreen({ navigation, route }: Props) {
                   </View>
                   {submissions.map((sub: any) => (
                     <View key={sub.id} style={styles.listCardRow}>
-                      <View>
+                      <View style={{ flex: 1 }}>
                         <Text style={styles.listCardTitle}>
                           {sub.userName || "Guest"} • /{sub.templateCommand}
                         </Text>
                         <Text style={styles.listCardSub}>
                           Ref: {sub.submissionRef || "N/A"} • Status: {sub.status}
                         </Text>
+                        {sub.userPhone ? (
+                          <ClickablePhone phone={sub.userPhone} style={{ marginTop: 4 }} />
+                        ) : null}
                       </View>
                       <Text style={styles.cellMutedText}>{sub.createdAt.slice(0, 10)}</Text>
                     </View>
@@ -4381,5 +4432,28 @@ const styles = StyleSheet.create({
   },
   attStatusExcusedTextActive: {
     color: "#A5B4FC",
+  },
+
+  // Clickable Phone Styles
+  clickablePhonePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(14, 165, 233, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.4)",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: "flex-start",
+    gap: 4,
+  },
+  clickablePhoneIcon: {
+    fontSize: 10,
+  },
+  clickablePhoneText: {
+    color: "#38BDF8",
+    fontSize: 11,
+    fontWeight: "700",
+    textDecorationLine: "underline",
   },
 });

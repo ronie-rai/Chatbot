@@ -243,7 +243,7 @@ export interface AcademyInvoice {
   id: string;
   invoiceNumber: string;
   playerId: string;
-  player?: { id: string; fullName: string; playerCode: string };
+  player?: { id: string; fullName: string; playerCode: string; guardianPhone?: string };
   dueDate: string;
   status: "DRAFT" | "ISSUED" | "PAID" | "PARTIALLY_PAID" | "OVERDUE" | "VOID";
   subtotalCents: number;
