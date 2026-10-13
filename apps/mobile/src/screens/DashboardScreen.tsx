@@ -4,16 +4,19 @@ import {
   Alert,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
   ScrollView,
+  StatusBar as RNStatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
@@ -52,13 +55,48 @@ import {
 } from "../academy/api";
 import { getDashboardData } from "../api/client";
 
+export interface ConsumableItem {
+  id: string;
+  name: string;
+  category: "Beverages" | "Equipment" | "Rentals" | "Accessories" | "Snacks" | "First Aid";
+  price: number; // in INR ₹
+  unit: string;
+}
+
+export const ACADEMY_CONSUMABLES: ConsumableItem[] = [
+  { id: "con-1", name: "Mineral Water (1 Litre)", category: "Beverages", price: 20, unit: "bottle" },
+  { id: "con-2", name: "Gatorade / Energy Drink (500ml)", category: "Beverages", price: 50, unit: "bottle" },
+  { id: "con-3", name: "Yonex Mavis 350 Shuttles (Pack of 3)", category: "Equipment", price: 350, unit: "tube" },
+  { id: "con-4", name: "Yonex Aerosensa Feather Shuttles (Pack of 6)", category: "Equipment", price: 950, unit: "tube" },
+  { id: "con-5", name: "Wilson Championship Tennis Balls (Can of 3)", category: "Equipment", price: 420, unit: "can" },
+  { id: "con-6", name: "Racket Rental (1 Hour)", category: "Rentals", price: 100, unit: "hour" },
+  { id: "con-7", name: "Overgrip Tape (Synthetic)", category: "Accessories", price: 80, unit: "pc" },
+  { id: "con-8", name: "Sports Sweatband / Wristband", category: "Accessories", price: 90, unit: "pc" },
+  { id: "con-9", name: "Protein / Energy Bar", category: "Snacks", price: 60, unit: "bar" },
+  { id: "con-10", name: "Instant Cold Pack / Pain Relief Spray", category: "First Aid", price: 120, unit: "unit" },
+];
+
+export const ADMISSION_VENUES = ["OFA-1", "OFA-2", "OFA-3"] as const;
+export const PREFERRED_SPORTS = [
+  "Football",
+  "Cricket",
+  "Badminton",
+  "Tennis",
+  "Pickleball",
+  "Table Tennis",
+] as const;
+
 type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
 
 type RibbonTab =
   | "overview"
   | "bookings"
+  | "new_booking"
   | "players"
+  | "new_admission"
   | "finance"
+  | "record_payment"
+  | "consumables"
   | "attendance"
   | "sports"
   | "growth"
@@ -66,11 +104,11 @@ type RibbonTab =
   | "submissions";
 
 export function DashboardScreen({ navigation, route }: Props) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<RibbonTab>(
     (route.params?.initialTab as RibbonTab) || "overview"
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(Dimensions.get("window").width);
 
   // Data states
@@ -99,17 +137,18 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [isAdmitPlayerModalOpen, setIsAdmitPlayerModalOpen] = useState(false);
   const [isRecordPaymentModalOpen, setIsRecordPaymentModalOpen] = useState(false);
 
-  // New Booking Form State
-  const [newBookingTitle, setNewBookingTitle] = useState("");
+  // New Booking Form State (Booking Title removed per Requirement 4)
   const [newBookingFacilityId, setNewBookingFacilityId] = useState("");
   const [newBookingCustomer, setNewBookingCustomer] = useState("");
   const [newBookingPhone, setNewBookingPhone] = useState("");
   const [newBookingDate, setNewBookingDate] = useState("2026-10-12");
   const [newBookingStartHour, setNewBookingStartHour] = useState("07");
   const [newBookingEndHour, setNewBookingEndHour] = useState("08");
+  const [bookingConsumables, setBookingConsumables] = useState<Record<string, number>>({});
   const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [phoneLookupNotice, setPhoneLookupNotice] = useState<string | null>(null);
 
-  // New Player Admission Form State (4-Section Matching User's Design)
+  // New Player Admission Form State
   const [admitFullName, setAdmitFullName] = useState("");
   const [admitEmail, setAdmitEmail] = useState("");
   const [admitMobile, setAdmitMobile] = useState("");
@@ -117,10 +156,8 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [admitAge, setAdmitAge] = useState("24");
   const [admitGender, setAdmitGender] = useState("Male");
   const [admitAddress, setAdmitAddress] = useState("");
-  const [admitVenue, setAdmitVenue] = useState(
-    "OFA Sports Foundation - 3 (Biju Patnaik Indoor)"
-  );
-  const [admitSportId, setAdmitSportId] = useState("");
+  const [admitVenue, setAdmitVenue] = useState<"OFA-1" | "OFA-2" | "OFA-3">("OFA-1");
+  const [admitSportId, setAdmitSportId] = useState<string>("Football");
   const [admitAdmissionDate, setAdmitAdmissionDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
@@ -283,10 +320,102 @@ export function DashboardScreen({ navigation, route }: Props) {
     }
   };
 
-  // Handler: In-Place Booking Creation
+  // Phone Auto-Lookup: Slot Booking
+  const handleBookingPhoneChange = (val: string) => {
+    setNewBookingPhone(val);
+    const cleaned = val.replace(/\D/g, "");
+    if (cleaned.length >= 10) {
+      const matchPlayer = players.find(
+        (p) => (p.mobileNumber && p.mobileNumber.replace(/\D/g, "").includes(cleaned)) ||
+               (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(cleaned))
+      );
+      if (matchPlayer) {
+        setNewBookingCustomer(matchPlayer.fullName);
+        setPhoneLookupNotice(`✨ Auto-filled player: ${matchPlayer.fullName} (${matchPlayer.playerCode})`);
+        setTimeout(() => setPhoneLookupNotice(null), 3500);
+        return;
+      }
+      const matchBooking = bookings.find(
+        (b) => b.contactPhone && b.contactPhone.replace(/\D/g, "").includes(cleaned)
+      );
+      if (matchBooking) {
+        setNewBookingCustomer(matchBooking.bookedBy);
+        setPhoneLookupNotice(`✨ Auto-filled customer: ${matchBooking.bookedBy}`);
+        setTimeout(() => setPhoneLookupNotice(null), 3500);
+      }
+    }
+  };
+
+  // Phone Auto-Lookup: Player Admission
+  const handleAdmissionPhoneChange = (val: string) => {
+    setAdmitMobile(val);
+    const cleaned = val.replace(/\D/g, "");
+    if (cleaned.length >= 10) {
+      const matchPlayer = players.find(
+        (p) => (p.mobileNumber && p.mobileNumber.replace(/\D/g, "").includes(cleaned)) ||
+               (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(cleaned))
+      );
+      if (matchPlayer) {
+        setAdmitFullName(matchPlayer.fullName);
+        if (matchPlayer.email) setAdmitEmail(matchPlayer.email);
+        if (matchPlayer.guardianName) setAdmitGuardianName(matchPlayer.guardianName);
+        if (matchPlayer.guardianPhone) setAdmitGuardianPhone(matchPlayer.guardianPhone);
+        if (matchPlayer.address) setAdmitAddress(matchPlayer.address);
+        if (matchPlayer.gender) setAdmitGender(matchPlayer.gender);
+        if (matchPlayer.dateOfBirth) handleDobChange(matchPlayer.dateOfBirth);
+        if (matchPlayer.venue && (matchPlayer.venue === "OFA-1" || matchPlayer.venue === "OFA-2" || matchPlayer.venue === "OFA-3")) {
+          setAdmitVenue(matchPlayer.venue);
+        }
+        setPhoneLookupNotice(`✨ Auto-filled profile from player: ${matchPlayer.fullName}`);
+        setTimeout(() => setPhoneLookupNotice(null), 3500);
+      }
+    }
+  };
+
+  const handleAdmissionGuardianPhoneChange = (val: string) => {
+    setAdmitGuardianPhone(val);
+    const cleaned = val.replace(/\D/g, "");
+    if (cleaned.length >= 10 && !admitFullName) {
+      const matchPlayer = players.find(
+        (p) => (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(cleaned)) ||
+               (p.mobileNumber && p.mobileNumber.replace(/\D/g, "").includes(cleaned))
+      );
+      if (matchPlayer) {
+        setAdmitFullName(matchPlayer.fullName);
+        if (matchPlayer.email) setAdmitEmail(matchPlayer.email);
+        if (matchPlayer.guardianName) setAdmitGuardianName(matchPlayer.guardianName);
+        if (matchPlayer.address) setAdmitAddress(matchPlayer.address);
+        setPhoneLookupNotice(`✨ Auto-filled guardian: ${matchPlayer.guardianName}`);
+        setTimeout(() => setPhoneLookupNotice(null), 3500);
+      }
+    }
+  };
+
+  // Consumables Handlers for Booking
+  const updateBookingConsumableQty = (id: string, delta: number) => {
+    setBookingConsumables((prev) => {
+      const current = prev[id] || 0;
+      const next = Math.max(0, current + delta);
+      if (next === 0) {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      }
+      return { ...prev, [id]: next };
+    });
+  };
+
+  const consumablesTotal = useMemo(() => {
+    return Object.entries(bookingConsumables).reduce((acc, [id, qty]) => {
+      const item = ACADEMY_CONSUMABLES.find((c) => c.id === id);
+      return acc + (item ? item.price * qty : 0);
+    }, 0);
+  }, [bookingConsumables]);
+
+  // Handler: In-Place Booking Creation (Requirement 4: Title removed, Consumables added)
   const handleCreateBookingSubmit = async () => {
-    if (!newBookingTitle.trim() || !newBookingCustomer.trim()) {
-      Alert.alert("Missing Information", "Please enter a booking title and customer name.");
+    if (!newBookingCustomer.trim()) {
+      Alert.alert("Missing Information", "Please enter customer / player name.");
       return;
     }
     const facId = newBookingFacilityId || (facilities[0]?.id ?? "fac-badm-1");
@@ -298,16 +427,22 @@ export function DashboardScreen({ navigation, route }: Props) {
       return;
     }
 
+    const selectedFac = facilities.find((f) => f.id === facId);
+    const facName = selectedFac?.name || "Court Session";
+    const autoTitle = `${newBookingCustomer.trim()} - ${facName}`;
+
     const startIso = `${newBookingDate}T${String(sH).padStart(2, "0")}:00:00Z`;
     const endIso = `${newBookingDate}T${String(eH).padStart(2, "0")}:00:00Z`;
-    const hours = eH - sH;
-    const amountCents = hours * 80000;
+    const hours = Math.max(1, eH - sH);
+    const courtCostCents = hours * 50000; // ₹500/hr in cents
+    const consumablesCostCents = consumablesTotal * 100;
+    const amountCents = courtCostCents + consumablesCostCents;
 
     setSubmittingBooking(true);
     try {
       const res = await createBooking({
         facilityId: facId,
-        title: newBookingTitle.trim(),
+        title: autoTitle,
         bookedBy: newBookingCustomer.trim(),
         contactPhone: newBookingPhone.trim() || undefined,
         startTime: startIso,
@@ -320,13 +455,16 @@ export function DashboardScreen({ navigation, route }: Props) {
         return;
       }
 
-      // Live In-place table update!
+      // Live in-place table update
       setBookings((prev) => [res.booking!, ...prev]);
       setIsNewBookingModalOpen(false);
-      setNewBookingTitle("");
       setNewBookingCustomer("");
       setNewBookingPhone("");
-      Alert.alert("Success", `Court booking "${res.booking.title}" confirmed!`);
+      setBookingConsumables({});
+      Alert.alert(
+        "Booking Confirmed",
+        `Court reserved: "${autoTitle}". Total Amount: ₹${Math.round(amountCents / 100)}`
+      );
     } catch {
       Alert.alert("Error", "Failed to confirm court booking.");
     } finally {
@@ -559,7 +697,7 @@ export function DashboardScreen({ navigation, route }: Props) {
       },
       {
         id: "title",
-        label: "Booking Title",
+        label: "Court Session",
         width: 170,
         sortValue: (b) => b.title,
         renderCell: (b) => (
@@ -875,47 +1013,135 @@ export function DashboardScreen({ navigation, route }: Props) {
     []
   );
 
+  const consumableColumns: ColumnDef<ConsumableItem>[] = useMemo(
+    () => [
+      {
+        id: "code",
+        label: "Item Code",
+        width: 100,
+        sortValue: (c) => c.id,
+        renderCell: (c) => <Text style={styles.codeText}>{c.id.toUpperCase()}</Text>,
+      },
+      {
+        id: "name",
+        label: "Item Description",
+        width: 240,
+        sortValue: (c) => c.name,
+        renderCell: (c) => (
+          <Text style={styles.cellBoldText} numberOfLines={1}>
+            {c.name}
+          </Text>
+        ),
+      },
+      {
+        id: "category",
+        label: "Category",
+        width: 130,
+        sortValue: (c) => c.category,
+        renderCell: (c) => (
+          <View style={[styles.badgeWrap, styles.badgeConfirmed]}>
+            <Text style={styles.badgeTextConfirmed}>{c.category}</Text>
+          </View>
+        ),
+      },
+      {
+        id: "unit",
+        label: "Billing Unit",
+        width: 110,
+        sortValue: (c) => c.unit,
+        renderCell: (c) => <Text style={styles.cellMutedText}>per {c.unit}</Text>,
+      },
+      {
+        id: "price",
+        label: "Price (₹)",
+        width: 110,
+        sortValue: (c) => c.price,
+        renderCell: (c) => (
+          <Text style={styles.currencyCellText}>₹{c.price.toLocaleString()}</Text>
+        ),
+      },
+      {
+        id: "status",
+        label: "Stock Status",
+        width: 120,
+        renderCell: () => (
+          <View style={[styles.badgeWrap, styles.badgeConfirmed]}>
+            <Text style={styles.badgeTextConfirmed}>● In Stock</Text>
+          </View>
+        ),
+      },
+    ],
+    []
+  );
+
   // ─── Ribbon Sidebar Render ──────────────────────────────────────────────────
 
   const renderSidebar = () => {
     const navItems = [
       { id: "overview", label: "Executive Hub", icon: "📊", badge: "Live" },
       { id: "bookings", label: "Courts & Bookings", icon: "📅", badge: String(bookings.length) },
-      { id: "players", label: "Players & Admissions", icon: "👥", badge: String(players.length) },
+      {
+        id: "new_booking",
+        label: "+ New Booking",
+        icon: "➕",
+        badge: "Form",
+        isAction: () => setIsNewBookingModalOpen(true),
+      },
+      { id: "players", label: "Players Directory", icon: "👥", badge: String(players.length) },
+      {
+        id: "new_admission",
+        label: "+ Admit Player",
+        icon: "📝",
+        badge: "Form",
+        isAction: () => setIsAdmitPlayerModalOpen(true),
+      },
       { id: "finance", label: "Fees & Invoices", icon: "💰", badge: String(invoices.length) },
-      { id: "attendance", label: "Session Attendance", icon: "⏱️", badge: `${batches.length} Batches` },
-      { id: "sports", label: "Sports & Batches", icon: "🏅", badge: String(sports.length) },
+      {
+        id: "record_payment",
+        label: "+ Pay Fee",
+        icon: "💳",
+        badge: "Form",
+        isAction: () => setIsRecordPaymentModalOpen(true),
+      },
+      { id: "consumables", label: "Consumables Table", icon: "📦", badge: String(ACADEMY_CONSUMABLES.length) },
+      { id: "attendance", label: "Attendance Sheet", icon: "⏱️", badge: `${batches.length} Batches` },
+      { id: "sports", label: "Sports Master", icon: "🏅", badge: String(sports.length) },
       { id: "growth", label: "Growth & Skills", icon: "📈", badge: String(assessments.length) },
       { id: "announcements", label: "Announcements", icon: "📢", badge: String(announcements.length) },
-      { id: "submissions", label: "Bot Submissions", icon: "🤖", badge: String(submissions.length) },
     ];
+
+    const isCollapsed = sidebarCollapsed || !isTablet;
 
     return (
       <View
         style={[
           styles.sidebarContainer,
-          sidebarCollapsed && styles.sidebarCollapsed,
-          !isTablet && styles.mobileSidebarDrawer,
+          isCollapsed && styles.sidebarCollapsed,
+          !isTablet && styles.mobileSidebarRail,
         ]}
       >
         {/* Brand & Organization Header */}
-        <View style={styles.brandHeader}>
+        <TouchableOpacity
+          style={styles.brandHeader}
+          onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+          activeOpacity={0.8}
+        >
           <View style={styles.brandBadge}>
             <Text style={styles.brandLogoIcon}>⚡</Text>
           </View>
-          {!sidebarCollapsed && (
+          {!isCollapsed && (
             <View style={styles.brandTextWrap}>
               <Text style={styles.brandTitle}>OFA ACADEMY</Text>
               <View style={styles.liveIndicatorRow}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveText}>OPERATIONS HUB</Text>
+                <Text style={styles.liveText}>OPERATIONS</Text>
               </View>
             </View>
           )}
-        </View>
+        </TouchableOpacity>
 
         {/* User Card */}
-        {!sidebarCollapsed && (
+        {!isCollapsed && (
           <View style={styles.userCard}>
             <View style={styles.userAvatar}>
               <Text style={styles.userAvatarText}>
@@ -927,7 +1153,7 @@ export function DashboardScreen({ navigation, route }: Props) {
                 {MOCK_CURRENT_USER.name}
               </Text>
               <Text style={styles.userRole}>
-                {MOCK_CURRENT_USER.role === "admin" ? "👑 Super Admin" : "👔 Academy Staff"}
+                {MOCK_CURRENT_USER.role === "admin" ? "👑 Admin" : "👔 Staff"}
               </Text>
             </View>
           </View>
@@ -936,7 +1162,7 @@ export function DashboardScreen({ navigation, route }: Props) {
         {/* Navigation Items List */}
         <ScrollView style={styles.navListScroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.navSectionHeading}>
-            {!sidebarCollapsed ? "MASTER TABLES & VIEWS" : "•••"}
+            {!isCollapsed ? "NAVIGATION TABS" : "•••"}
           </Text>
 
           {navItems.map((item) => {
@@ -944,15 +1170,22 @@ export function DashboardScreen({ navigation, route }: Props) {
             return (
               <TouchableOpacity
                 key={item.id}
-                style={[styles.navItemBtn, isActive && styles.navItemBtnActive]}
+                style={[
+                  styles.navItemBtn,
+                  isActive && styles.navItemBtnActive,
+                  isCollapsed && styles.navItemBtnCollapsed,
+                ]}
                 onPress={() => {
-                  setActiveTab(item.id as RibbonTab);
-                  if (!isTablet) setIsMobileMenuOpen(false);
+                  if (item.isAction) {
+                    item.isAction();
+                  } else {
+                    setActiveTab(item.id as RibbonTab);
+                  }
                 }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.navItemIcon}>{item.icon}</Text>
-                {!sidebarCollapsed && (
+                {!isCollapsed && (
                   <View style={styles.navItemLabelWrap}>
                     <Text
                       style={[
@@ -976,16 +1209,24 @@ export function DashboardScreen({ navigation, route }: Props) {
             );
           })}
 
-          {/* Quick jump to AI Chatbot */}
+          {/* Quick jump to OFA Assistant */}
           <View style={styles.chatNavSeparator} />
           <TouchableOpacity
-            style={styles.chatNavBtn}
-            onPress={() => navigation.navigate("ConversationList")}
+            style={[styles.chatNavBtn, isCollapsed && styles.chatNavBtnCollapsed]}
+            onPress={() =>
+              navigation.navigate("Chat", {
+                conversationId: "ofa-conv-001",
+                conversationName: "OFA Assistant",
+              })
+            }
             activeOpacity={0.7}
           >
             <Text style={styles.navItemIcon}>💬</Text>
-            {!sidebarCollapsed && (
-              <Text style={styles.chatNavLabel}>AI Chatbot Assistant</Text>
+            {!isCollapsed && (
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chatNavLabel}>OFA Assistant</Text>
+                <Text style={styles.chatNavSubLabel}>Read-Only Tables</Text>
+              </View>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -998,14 +1239,17 @@ export function DashboardScreen({ navigation, route }: Props) {
               onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
             >
               <Text style={styles.collapseToggleText}>
-                {sidebarCollapsed ? "▶" : "◀ Collapse Ribbon"}
+                {sidebarCollapsed ? "▶" : "◀ Collapse"}
               </Text>
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+          <TouchableOpacity
+            style={[styles.signOutBtn, isCollapsed && styles.signOutBtnCollapsed]}
+            onPress={handleSignOut}
+          >
             <Text style={styles.signOutIcon}>🚪</Text>
-            {!sidebarCollapsed && <Text style={styles.signOutText}>Sign Out</Text>}
+            {!isCollapsed && <Text style={styles.signOutText}>Sign Out</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -1015,46 +1259,29 @@ export function DashboardScreen({ navigation, route }: Props) {
   // ─── Main Content View Render ───────────────────────────────────────────────
 
   return (
-    <View style={styles.screenContainer}>
-      {/* Tablet: Persistent Left Ribbon | Mobile: Collapsible Drawer */}
-      {isTablet ? (
-        renderSidebar()
-      ) : (
-        <Modal
-          visible={isMobileMenuOpen}
-          animationType="fade"
-          transparent
-          onRequestClose={() => setIsMobileMenuOpen(false)}
-        >
-          <View style={styles.mobileModalBackdrop}>
-            <TouchableOpacity
-              style={styles.mobileBackdropDismiss}
-              onPress={() => setIsMobileMenuOpen(false)}
-            />
-            {renderSidebar()}
-          </View>
-        </Modal>
-      )}
+    <View style={[styles.screenContainer, { paddingTop: insets.top }]}>
+      <RNStatusBar barStyle="light-content" backgroundColor="#0F1626" translucent={false} />
+      {/* Permanent Left-Side Navigation Tabs on all devices */}
+      {renderSidebar()}
 
       {/* Main Operational Stage */}
       <View style={styles.mainStage}>
         {/* Top Operational Navigation Bar */}
         <View style={styles.topStageBar}>
           <View style={styles.topBarLeft}>
-            {!isTablet && (
-              <TouchableOpacity
-                style={styles.hamburgerBtn}
-                onPress={() => setIsMobileMenuOpen(true)}
-              >
-                <Text style={styles.hamburgerIcon}>☰</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={styles.hamburgerBtn}
+              onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+            >
+              <Text style={styles.hamburgerIcon}>{sidebarCollapsed || !isTablet ? "▶" : "◀"}</Text>
+            </TouchableOpacity>
             <View>
               <Text style={styles.stageTitle}>
                 {activeTab === "overview" && "📊 Executive Operations Hub"}
                 {activeTab === "bookings" && "📅 Courts & Facility Bookings"}
                 {activeTab === "players" && "👥 Players Directory & Admissions"}
                 {activeTab === "finance" && "💰 Fees, Payments & Invoices"}
+                {activeTab === "consumables" && "📦 Consumables & Equipment Catalog"}
                 {activeTab === "attendance" && "⏱️ Session Attendance Tracker"}
                 {activeTab === "sports" && "🏅 Sports Disciplines & Batches"}
                 {activeTab === "growth" && "📈 Player Growth & Assessments"}
@@ -1539,22 +1766,54 @@ export function DashboardScreen({ navigation, route }: Props) {
                   ))}
                 </View>
               )}
+
+              {/* ── TAB 10: CONSUMABLES INVENTORY TABLE ────────────────────────── */}
+              {activeTab === "consumables" && (
+                <View style={styles.overviewSectionCard}>
+                  <View style={styles.overviewSectionHeader}>
+                    <View>
+                      <Text style={styles.overviewSectionTitle}>
+                        📦 Academy Consumables & Equipment Catalog
+                      </Text>
+                      <Text style={styles.overviewSectionSub}>
+                        Inventory list of consumable items and rental gear with fixed rates
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.sectionHeaderActionBtn}
+                      onPress={() => setIsNewBookingModalOpen(true)}
+                    >
+                      <Text style={styles.sectionHeaderActionText}>+ New Booking</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <FlexibleDataTable
+                    data={ACADEMY_CONSUMABLES}
+                    columns={consumableColumns}
+                    keyExtractor={(c) => c.id}
+                    emptyMessage="No consumable items configured."
+                  />
+                </View>
+              )}
             </>
           )}
         </ScrollView>
       </View>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {/* MODAL 1: IN-PLACE NEW COURT BOOKING                                       */}
+      {/* MODAL 1: IN-PLACE NEW COURT BOOKING (WITH CONSUMABLES & AUTO-LOOKUP)       */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Modal visible={isNewBookingModalOpen} animationType="fade" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalBackdrop}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 10}
+        >
+          <View style={[styles.modalContainer, { maxWidth: 640, maxHeight: "90%" }]}>
             <View style={styles.modalHeaderRow}>
               <View>
                 <Text style={styles.modalTitleText}>Reserve Court / Slot</Text>
                 <Text style={styles.modalSubText}>
-                  Instantly book a court and add to live bookings table
+                  Book a facility and attach consumables with live price calculation
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsNewBookingModalOpen(false)}>
@@ -1562,16 +1821,54 @@ export function DashboardScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalFormScroll}>
-              <Text style={styles.formLabel}>BOOKING TITLE *</Text>
+            <ScrollView
+              style={styles.modalFormScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+            >
+              {phoneLookupNotice && (
+                <View style={styles.phoneLookupBanner}>
+                  <Text style={styles.phoneLookupBannerText}>{phoneLookupNotice}</Text>
+                </View>
+              )}
+
+              {/* Court / Facility Selection */}
+              <Text style={styles.formLabel}>SELECT COURT / FACILITY *</Text>
+              <View style={styles.facilityPillRow}>
+                {facilities.map((f) => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[
+                      styles.facilityPill,
+                      newBookingFacilityId === f.id && styles.facilityPillActive,
+                    ]}
+                    onPress={() => setNewBookingFacilityId(f.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.facilityPillText,
+                        newBookingFacilityId === f.id && styles.facilityPillTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {f.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Contact Mobile with Phone Auto-Lookup (Requirement 5) */}
+              <Text style={styles.formLabel}>CONTACT MOBILE NUMBER * (Auto-Lookup)</Text>
               <TextInput
                 style={styles.modalDarkInput}
-                placeholder="e.g. Weekend Friendly Match"
+                placeholder="e.g. 9876543210 (enter 10 digits to auto-fetch player)"
                 placeholderTextColor="#64748B"
-                value={newBookingTitle}
-                onChangeText={setNewBookingTitle}
+                keyboardType="phone-pad"
+                value={newBookingPhone}
+                onChangeText={handleBookingPhoneChange}
               />
 
+              {/* Customer Name */}
               <Text style={styles.formLabel}>CUSTOMER / PLAYER NAME *</Text>
               <TextInput
                 style={styles.modalDarkInput}
@@ -1581,28 +1878,20 @@ export function DashboardScreen({ navigation, route }: Props) {
                 onChangeText={setNewBookingCustomer}
               />
 
-              <Text style={styles.formLabel}>CONTACT MOBILE NUMBER</Text>
-              <TextInput
-                style={styles.modalDarkInput}
-                placeholder="e.g. 9876543210"
-                placeholderTextColor="#64748B"
-                keyboardType="phone-pad"
-                value={newBookingPhone}
-                onChangeText={setNewBookingPhone}
-              />
-
-              <Text style={styles.formLabel}>BOOKING DATE</Text>
-              <TextInput
-                style={styles.modalDarkInput}
-                placeholder="2026-10-12"
-                placeholderTextColor="#64748B"
-                value={newBookingDate}
-                onChangeText={setNewBookingDate}
-              />
-
+              {/* Booking Date & Hours */}
               <View style={styles.formRow}>
+                <View style={[styles.formCol, { flex: 1.2 }]}>
+                  <Text style={styles.formLabel}>BOOKING DATE (YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={styles.modalDarkInput}
+                    placeholder="2026-10-12"
+                    placeholderTextColor="#64748B"
+                    value={newBookingDate}
+                    onChangeText={setNewBookingDate}
+                  />
+                </View>
                 <View style={styles.formCol}>
-                  <Text style={styles.formLabel}>START HOUR (06-22)</Text>
+                  <Text style={styles.formLabel}>START HOUR</Text>
                   <TextInput
                     style={styles.modalDarkInput}
                     placeholder="07"
@@ -1613,7 +1902,7 @@ export function DashboardScreen({ navigation, route }: Props) {
                   />
                 </View>
                 <View style={styles.formCol}>
-                  <Text style={styles.formLabel}>END HOUR (07-23)</Text>
+                  <Text style={styles.formLabel}>END HOUR</Text>
                   <TextInput
                     style={styles.modalDarkInput}
                     placeholder="08"
@@ -1622,6 +1911,99 @@ export function DashboardScreen({ navigation, route }: Props) {
                     value={newBookingEndHour}
                     onChangeText={setNewBookingEndHour}
                   />
+                </View>
+              </View>
+
+              {/* Consumables Section (Requirement 4) */}
+              <View style={styles.consumablesSection}>
+                <View style={styles.consumablesSectionHeader}>
+                  <Text style={styles.consumablesSectionTitle}>
+                    📦 Add Consumables & Equipment (n items can be attached)
+                  </Text>
+                  <Text style={styles.consumablesSectionSub}>
+                    Select any quantity of beverages, rentals, shuttles, or balls
+                  </Text>
+                </View>
+
+                {ACADEMY_CONSUMABLES.map((item) => {
+                  const qty = bookingConsumables[item.id] || 0;
+                  return (
+                    <View key={item.id} style={styles.consumableItemRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.consumableItemName}>{item.name}</Text>
+                        <Text style={styles.consumableItemSub}>
+                          ₹{item.price} / {item.unit} • {item.category}
+                        </Text>
+                      </View>
+                      <View style={styles.stepperContainer}>
+                        <TouchableOpacity
+                          style={styles.stepperBtn}
+                          onPress={() => updateBookingConsumableQty(item.id, -1)}
+                          disabled={qty === 0}
+                        >
+                          <Text
+                            style={[
+                              styles.stepperBtnText,
+                              qty === 0 && styles.stepperBtnDisabled,
+                            ]}
+                          >
+                            -
+                          </Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stepperQty}>{qty}</Text>
+                        <TouchableOpacity
+                          style={styles.stepperBtn}
+                          onPress={() => updateBookingConsumableQty(item.id, 1)}
+                        >
+                          <Text style={styles.stepperBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                {/* Live Price Summary */}
+                <View style={styles.priceSummaryBox}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>
+                      Court Rental (
+                      {Math.max(
+                        1,
+                        (parseInt(newBookingEndHour, 10) || 8) -
+                          (parseInt(newBookingStartHour, 10) || 7)
+                      )}
+                      h):
+                    </Text>
+                    <Text style={styles.summaryValue}>
+                      ₹
+                      {Math.max(
+                        1,
+                        (parseInt(newBookingEndHour, 10) || 8) -
+                          (parseInt(newBookingStartHour, 10) || 7)
+                      ) * 500}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>
+                      Consumables Total (
+                      {Object.values(bookingConsumables).reduce((a, b) => a + b, 0)}{" "}
+                      items):
+                    </Text>
+                    <Text style={styles.summaryValue}>₹{consumablesTotal}</Text>
+                  </View>
+                  <View style={[styles.summaryRow, styles.summaryTotalRow]}>
+                    <Text style={styles.summaryTotalLabel}>Total Booking Cost:</Text>
+                    <Text style={styles.summaryTotalValue}>
+                      ₹
+                      {Math.max(
+                        1,
+                        (parseInt(newBookingEndHour, 10) || 8) -
+                          (parseInt(newBookingStartHour, 10) || 7)
+                      ) *
+                        500 +
+                        consumablesTotal}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </ScrollView>
@@ -1646,15 +2028,19 @@ export function DashboardScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL 2: EXACT 4-SECTION DARK PLAYER ADMISSION MODAL                      */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Modal visible={isAdmitPlayerModalOpen} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalContainer, { maxWidth: 600, maxHeight: "90%" }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalBackdrop}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 10}
+        >
+          <View style={[styles.modalContainer, { maxWidth: 620, maxHeight: "90%" }]}>
             <View style={styles.modalHeaderRow}>
               <View>
                 <Text style={styles.modalTitleText}>Admit New Player</Text>
@@ -1667,7 +2053,17 @@ export function DashboardScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalFormScroll}>
+            <ScrollView
+              style={styles.modalFormScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+            >
+              {phoneLookupNotice && (
+                <View style={styles.phoneLookupBanner}>
+                  <Text style={styles.phoneLookupBannerText}>{phoneLookupNotice}</Text>
+                </View>
+              )}
+
               {/* SECTION 1: Personal Profile Details */}
               <View style={styles.admissionSectionBox}>
                 <Text style={styles.admissionSectionHeading}>
@@ -1700,14 +2096,16 @@ export function DashboardScreen({ navigation, route }: Props) {
 
                 <View style={styles.formRow}>
                   <View style={styles.formCol}>
-                    <Text style={styles.formLabel}>MOBILE NUMBER *</Text>
+                    <Text style={styles.formLabel}>
+                      MOBILE NUMBER * (Auto-Lookup)
+                    </Text>
                     <TextInput
                       style={styles.modalDarkInput}
                       placeholder="e.g. 9535682835"
                       placeholderTextColor="#64748B"
                       keyboardType="phone-pad"
                       value={admitMobile}
-                      onChangeText={setAdmitMobile}
+                      onChangeText={handleAdmissionPhoneChange}
                     />
                   </View>
                   <View style={styles.formCol}>
@@ -1756,40 +2154,53 @@ export function DashboardScreen({ navigation, route }: Props) {
                 </View>
               </View>
 
-              {/* SECTION 2: Sports & Batch Setup */}
+              {/* SECTION 2: Sports & Batch Setup (Requirements 6: OFA-1/2/3 & 6 Sports) */}
               <View style={styles.admissionSectionBox}>
                 <Text style={styles.admissionSectionHeading}>
                   🏅 Sports & Batch Setup
                 </Text>
 
-                <View style={styles.formRow}>
-                  <View style={[styles.formCol, { flex: 1.5 }]}>
-                    <Text style={styles.formLabel}>ADMISSION VENUE *</Text>
-                    <TextInput
-                      style={styles.modalDarkInput}
-                      placeholder="OFA Sports Foundation - 3 (Biju Patnaik Indoor)"
-                      placeholderTextColor="#64748B"
-                      value={admitVenue}
-                      onChangeText={setAdmitVenue}
-                    />
-                  </View>
-                  <View style={styles.formCol}>
-                    <Text style={styles.formLabel}>PREFERRED SPORT *</Text>
-                    <TextInput
-                      style={styles.modalDarkInput}
-                      placeholder="BASKETBALL"
-                      placeholderTextColor="#64748B"
-                      value={
-                        sports.find((s) => s.id === admitSportId)?.name || "BASKETBALL"
-                      }
-                      onChangeText={(val) => {
-                        const found = sports.find(
-                          (s) => s.name.toLowerCase() === val.toLowerCase()
-                        );
-                        if (found) setAdmitSportId(found.id);
-                      }}
-                    />
-                  </View>
+                <Text style={styles.formLabel}>ADMISSION VENUE *</Text>
+                <View style={styles.venuePillRow}>
+                  {ADMISSION_VENUES.map((v) => (
+                    <TouchableOpacity
+                      key={v}
+                      style={[styles.venuePill, admitVenue === v && styles.venuePillActive]}
+                      onPress={() => setAdmitVenue(v)}
+                    >
+                      <Text
+                        style={[
+                          styles.venuePillText,
+                          admitVenue === v && styles.venuePillTextActive,
+                        ]}
+                      >
+                        {v}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.formLabel}>PREFERRED SPORT *</Text>
+                <View style={styles.sportPillGrid}>
+                  {PREFERRED_SPORTS.map((sp) => (
+                    <TouchableOpacity
+                      key={sp}
+                      style={[
+                        styles.sportPill,
+                        admitSportId === sp && styles.sportPillActive,
+                      ]}
+                      onPress={() => setAdmitSportId(sp)}
+                    >
+                      <Text
+                        style={[
+                          styles.sportPillText,
+                          admitSportId === sp && styles.sportPillTextActive,
+                        ]}
+                      >
+                        {sp}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
 
                 <View style={styles.formRow}>
@@ -1904,7 +2315,7 @@ export function DashboardScreen({ navigation, route }: Props) {
                       placeholderTextColor="#64748B"
                       keyboardType="phone-pad"
                       value={admitGuardianPhone}
-                      onChangeText={setAdmitGuardianPhone}
+                      onChangeText={handleAdmissionGuardianPhoneChange}
                     />
                   </View>
                 </View>
@@ -1949,7 +2360,13 @@ export function DashboardScreen({ navigation, route }: Props) {
                       {admitPhotoUri ? (
                         <Image
                           source={{ uri: admitPhotoUri }}
-                          style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: Colors.primary }}
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 22,
+                            borderWidth: 1,
+                            borderColor: Colors.primary,
+                          }}
                         />
                       ) : null}
                       <TouchableOpacity
@@ -1990,14 +2407,18 @@ export function DashboardScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {/* MODAL 3: IN-PLACE RECORD PAYMENT                                          */}
+      {/* MODAL 3: IN-PLACE RECORD PAYMENT (WITH KEYBOARD AVOIDING VIEW)            */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Modal visible={isRecordPaymentModalOpen} animationType="fade" transparent>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalBackdrop}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 10}
+        >
           <View style={styles.modalContainer}>
             <View style={styles.modalHeaderRow}>
               <View>
@@ -2011,7 +2432,11 @@ export function DashboardScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalFormScroll}>
+            <ScrollView
+              style={styles.modalFormScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+            >
               <Text style={styles.formLabel}>SELECT INVOICE *</Text>
               <View style={styles.invoicePickerList}>
                 {invoices.map((inv) => (
@@ -2099,7 +2524,7 @@ export function DashboardScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -2127,6 +2552,10 @@ const styles = StyleSheet.create({
   sidebarCollapsed: {
     width: 68,
     paddingHorizontal: 6,
+  },
+  mobileSidebarRail: {
+    width: 68,
+    paddingHorizontal: 4,
   },
   mobileSidebarDrawer: {
     width: 260,
@@ -2256,6 +2685,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: "#3B82F6",
   },
+  navItemBtnCollapsed: {
+    justifyContent: "center",
+    paddingHorizontal: 0,
+    alignItems: "center",
+  },
   navItemIcon: {
     fontSize: 16,
   },
@@ -2308,10 +2742,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1E3A66",
   },
+  chatNavBtnCollapsed: {
+    justifyContent: "center",
+    paddingHorizontal: 0,
+    alignItems: "center",
+  },
   chatNavLabel: {
     color: "#60A5FA",
     fontSize: 12,
     fontWeight: "700",
+  },
+  chatNavSubLabel: {
+    color: "#64748B",
+    fontSize: 9,
+    fontWeight: "600",
   },
 
   sidebarFooter: {
@@ -2338,6 +2782,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 6,
+  },
+  signOutBtnCollapsed: {
+    justifyContent: "center",
+    paddingHorizontal: 0,
+    alignItems: "center",
   },
   signOutIcon: {
     fontSize: 14,
@@ -2868,5 +3317,219 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
+  },
+
+  phoneLookupBanner: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  phoneLookupBannerText: {
+    color: "#60A5FA",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  facilityPillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
+  facilityPill: {
+    backgroundColor: "#131D30",
+    borderWidth: 1,
+    borderColor: "#1E2C44",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  facilityPillActive: {
+    backgroundColor: "#1D4ED8",
+    borderColor: "#3B82F6",
+  },
+  facilityPillText: {
+    color: "#94A3B8",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  facilityPillTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+
+  consumablesSection: {
+    backgroundColor: "#131D30",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#1E2C44",
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  consumablesSectionHeader: {
+    marginBottom: 10,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1B273E",
+  },
+  consumablesSectionTitle: {
+    color: "#F1F5F9",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  consumablesSectionSub: {
+    color: "#64748B",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  consumableItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#162238",
+  },
+  consumableItemName: {
+    color: "#E2E8F0",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  consumableItemSub: {
+    color: "#64748B",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  stepperContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#0A0E17",
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "#1E2C44",
+  },
+  stepperBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    backgroundColor: "#1E2C44",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperBtnText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  stepperBtnDisabled: {
+    color: "#475569",
+  },
+  stepperQty: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+    minWidth: 20,
+    textAlign: "center",
+  },
+  priceSummaryBox: {
+    backgroundColor: "#0A0E17",
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#1E2C44",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    color: "#94A3B8",
+    fontSize: 12,
+  },
+  summaryValue: {
+    color: "#E2E8F0",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  summaryTotalRow: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#1E2C44",
+    marginBottom: 0,
+  },
+  summaryTotalLabel: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  summaryTotalValue: {
+    color: "#10B981",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  venuePillRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+  venuePill: {
+    flex: 1,
+    backgroundColor: "#141D30",
+    borderWidth: 1,
+    borderColor: "#202E46",
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  venuePillActive: {
+    backgroundColor: "#1D4ED8",
+    borderColor: "#3B82F6",
+  },
+  venuePillText: {
+    color: "#8B9BB4",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  venuePillTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  sportPillGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 10,
+  },
+  sportPill: {
+    backgroundColor: "#141D30",
+    borderWidth: 1,
+    borderColor: "#202E46",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  sportPillActive: {
+    backgroundColor: "#059669",
+    borderColor: "#10B981",
+  },
+  sportPillText: {
+    color: "#8B9BB4",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  sportPillTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 });

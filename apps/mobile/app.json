@@ -24,6 +24,11 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "statusBar": {
+        "barStyle": "light-content",
+        "backgroundColor": "#0F1626",
+        "translucent": false
+      },
       "predictiveBackGestureEnabled": false,
       "permissions": ["INTERNET", "VIBRATE"]
     },

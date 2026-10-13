@@ -4,7 +4,9 @@ import {
   Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -49,8 +51,8 @@ export function PlayerDirectoryScreen({ route }: Props) {
   const [gender, setGender] = useState("Male");
   const [address, setAddress] = useState("");
 
-  const [venue, setVenue] = useState("OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)");
-  const [selectedSportId, setSelectedSportId] = useState("");
+  const [venue, setVenue] = useState<"OFA-1" | "OFA-2" | "OFA-3">("OFA-1");
+  const [selectedSportId, setSelectedSportId] = useState("Football");
   const [admissionDate, setAdmissionDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
@@ -74,6 +76,52 @@ export function PlayerDirectoryScreen({ route }: Props) {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [lookupBanner, setLookupBanner] = useState<string | null>(null);
+
+  // Phone number auto-fill lookup
+  const handleMobileChange = (text: string) => {
+    setMobileNumber(text);
+    const cleaned = text.replace(/\D/g, "");
+    if (cleaned.length >= 10) {
+      const match = players.find(
+        (p) => (p.mobileNumber && p.mobileNumber.replace(/\D/g, "").includes(cleaned)) ||
+               (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(cleaned))
+      );
+      if (match) {
+        if (match.fullName) setFullName(match.fullName);
+        if (match.email) setEmail(match.email);
+        if (match.guardianName) setGuardianName(match.guardianName);
+        if (match.guardianPhone) setGuardianPhone(match.guardianPhone);
+        if (match.address) setAddress(match.address);
+        if (match.gender) setGender(match.gender);
+        if (match.dateOfBirth) handleDobChange(match.dateOfBirth);
+        if (match.venue && (match.venue === "OFA-1" || match.venue === "OFA-2" || match.venue === "OFA-3")) {
+          setVenue(match.venue);
+        }
+        setLookupBanner(`✨ Auto-filled profile from player record: ${match.fullName}`);
+        setTimeout(() => setLookupBanner(null), 4000);
+      }
+    }
+  };
+
+  const handleGuardianPhoneChange = (text: string) => {
+    setGuardianPhone(text);
+    const cleaned = text.replace(/\D/g, "");
+    if (cleaned.length >= 10 && !fullName) {
+      const match = players.find(
+        (p) => (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(cleaned)) ||
+               (p.mobileNumber && p.mobileNumber.replace(/\D/g, "").includes(cleaned))
+      );
+      if (match) {
+        if (match.fullName) setFullName(match.fullName);
+        if (match.email) setEmail(match.email);
+        if (match.guardianName) setGuardianName(match.guardianName);
+        if (match.address) setAddress(match.address);
+        setLookupBanner(`✨ Auto-filled profile from guardian: ${match.guardianName}`);
+        setTimeout(() => setLookupBanner(null), 4000);
+      }
+    }
+  };
 
   // Picker modal state
   const [pickerConfig, setPickerConfig] = useState<{
@@ -109,7 +157,8 @@ export function PlayerDirectoryScreen({ route }: Props) {
     setAge("24");
     setGender("Male");
     setAddress("");
-    setVenue("OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)");
+    setVenue("OFA-1");
+    setSelectedSportId("Football");
     setAdmissionDate(new Date().toISOString().slice(0, 10));
     setStartTime("06:00 AM");
     setEndTime("07:00 AM");
@@ -127,6 +176,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
     setHasPhotograph(false);
     setPhotoUri(null);
     setPhotoBase64(null);
+    setLookupBanner(null);
   };
 
   const loadData = useCallback(async () => {
@@ -456,7 +506,11 @@ export function PlayerDirectoryScreen({ route }: Props) {
 
       {/* Comprehensive Dark-Themed Admission Modal */}
       <Modal visible={isAdmitModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 10}
+        >
           <View style={styles.modalContainer}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
@@ -480,6 +534,12 @@ export function PlayerDirectoryScreen({ route }: Props) {
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
+              {lookupBanner && (
+                <View style={{ backgroundColor: "rgba(56,189,248,0.15)", borderWidth: 1, borderColor: "#38BDF8", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <Text style={{ color: "#38BDF8", fontSize: 13, fontWeight: "600" }}>{lookupBanner}</Text>
+                </View>
+              )}
+
               {/* SECTION 1: Personal Profile Details */}
               <View style={styles.sectionCard}>
                 <View style={styles.sectionHeaderRow}>
@@ -531,7 +591,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
                       placeholderTextColor="#6E7681"
                       keyboardType="phone-pad"
                       value={mobileNumber}
-                      onChangeText={setMobileNumber}
+                      onChangeText={handleMobileChange}
                     />
                   </View>
                   <View style={[styles.gridCol, { flex: 1.2 }]}>
@@ -617,13 +677,12 @@ export function PlayerDirectoryScreen({ route }: Props) {
                         setPickerConfig({
                           title: "Select Admission Venue",
                           options: [
-                            { label: "OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)", value: "OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)" },
-                            { label: "Main Academy Sports Complex", value: "Main Academy Sports Complex" },
-                            { label: "Court 1 & 2 Center", value: "Court 1 & 2 Center" },
-                            { label: "East Wing Pavilion", value: "East Wing Pavilion" },
+                            { label: "OFA-1", value: "OFA-1" },
+                            { label: "OFA-2", value: "OFA-2" },
+                            { label: "OFA-3", value: "OFA-3" },
                           ],
                           selectedValue: venue,
-                          onSelect: (val) => setVenue(val),
+                          onSelect: (val) => setVenue(val as "OFA-1" | "OFA-2" | "OFA-3"),
                         })
                       }
                     >
@@ -642,17 +701,21 @@ export function PlayerDirectoryScreen({ route }: Props) {
                       onPress={() =>
                         setPickerConfig({
                           title: "Select Preferred Sport",
-                          options: (sports || []).map((s) => ({
-                            label: s.name.toUpperCase(),
-                            value: s.id,
-                          })),
+                          options: [
+                            "Football",
+                            "Cricket",
+                            "Badminton",
+                            "Tennis",
+                            "Pickleball",
+                            "Table Tennis",
+                          ].map((s) => ({ label: s, value: s })),
                           selectedValue: selectedSportId,
                           onSelect: (val) => setSelectedSportId(val),
                         })
                       }
                     >
                       <Text style={styles.dropdownValue} numberOfLines={1}>
-                        {(sports || []).find((s) => s.id === selectedSportId)?.name.toUpperCase() || "SELECT SPORT"}
+                        {selectedSportId}
                       </Text>
                       <Text style={styles.dropdownChevron}>▼</Text>
                     </TouchableOpacity>
@@ -902,7 +965,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
                       placeholderTextColor="#6E7681"
                       keyboardType="phone-pad"
                       value={guardianPhone}
-                      onChangeText={setGuardianPhone}
+                      onChangeText={handleGuardianPhoneChange}
                     />
                   </View>
                 </View>
@@ -1035,7 +1098,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
               </View>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Reusable Options Picker Modal */}

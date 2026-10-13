@@ -3,8 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,31 +19,40 @@ import {
   createBooking,
   fetchBookings,
   fetchFacilities,
+  fetchPlayers,
   type AcademyBooking,
   type AcademyFacility,
+  type AcademyPlayer,
 } from "../api";
+import { ACADEMY_CONSUMABLES } from "../../screens/DashboardScreen";
 
 export function BookingsScreen() {
   const [facilities, setFacilities] = useState<AcademyFacility[]>([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
   const [bookings, setBookings] = useState<AcademyBooking[]>([]);
+  const [players, setPlayers] = useState<AcademyPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Booking modal state
+  // Booking modal state (Booking Title removed per Requirement 4)
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [title, setTitle] = useState("");
   const [bookedBy, setBookedBy] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [startHour, setStartHour] = useState("16");
   const [endHour, setEndHour] = useState("18");
+  const [bookingConsumables, setBookingConsumables] = useState<Record<string, number>>({});
+  const [phoneLookupNotice, setPhoneLookupNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const facs = await fetchFacilities();
+      const [facs, plyData] = await Promise.all([
+        fetchFacilities(),
+        fetchPlayers().catch(() => ({ players: [] })),
+      ]);
       const safeFacs = facs || [];
       setFacilities(safeFacs);
+      if (plyData?.players) setPlayers(plyData.players);
       const activeFacId = selectedFacilityId || (safeFacs.length > 0 ? safeFacs[0].id : "");
       if (activeFacId) {
         setSelectedFacilityId(activeFacId);
@@ -78,9 +90,44 @@ export function BookingsScreen() {
     }
   };
 
+  // Phone auto-lookup
+  const handlePhoneChange = (val: string) => {
+    setContactPhone(val);
+    const cleaned = val.replace(/\D/g, "");
+    if (cleaned.length >= 10) {
+      const match = players.find(
+        (p) => (p.mobileNumber && p.mobileNumber.replace(/\D/g, "").includes(cleaned)) ||
+               (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(cleaned))
+      );
+      if (match) {
+        setBookedBy(match.fullName);
+        setPhoneLookupNotice(`✨ Auto-filled player: ${match.fullName}`);
+        setTimeout(() => setPhoneLookupNotice(null), 3500);
+      }
+    }
+  };
+
+  const updateConsumableQty = (id: string, delta: number) => {
+    setBookingConsumables((prev) => {
+      const current = prev[id] || 0;
+      const next = Math.max(0, current + delta);
+      if (next === 0) {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      }
+      return { ...prev, [id]: next };
+    });
+  };
+
+  const consumablesTotal = Object.entries(bookingConsumables).reduce((acc, [id, qty]) => {
+    const item = ACADEMY_CONSUMABLES.find((c) => c.id === id);
+    return acc + (item ? item.price * qty : 0);
+  }, 0);
+
   const handleCreateBooking = async () => {
-    if (!title.trim() || !bookedBy.trim()) {
-      Alert.alert("Missing Fields", "Booking title and customer name are required.");
+    if (!bookedBy.trim()) {
+      Alert.alert("Missing Fields", "Customer / player name is required.");
       return;
     }
 
@@ -95,16 +142,21 @@ export function BookingsScreen() {
     const startTime = `${today}T${String(sH).padStart(2, "0")}:00:00Z`;
     const endTime = `${today}T${String(eH).padStart(2, "0")}:00:00Z`;
 
+    const activeFac = facilities.find((f) => f.id === selectedFacilityId);
+    const autoTitle = `${bookedBy.trim()} - ${activeFac?.name || "Court Session"}`;
+    const courtCostCents = (eH - sH) * 80000; // ₹800/hr
+    const consumablesCostCents = consumablesTotal * 100;
+
     setSubmitting(true);
     try {
       const res = await createBooking({
         facilityId: selectedFacilityId,
-        title: title.trim(),
+        title: autoTitle,
         bookedBy: bookedBy.trim(),
         contactPhone: contactPhone.trim() || undefined,
         startTime,
         endTime,
-        totalAmountCents: (eH - sH) * 80000, // ₹800/hr
+        totalAmountCents: courtCostCents + consumablesCostCents,
       });
 
       if (!res.ok || !res.booking) {
@@ -115,11 +167,14 @@ export function BookingsScreen() {
         return;
       }
 
-      Alert.alert("Booking Confirmed", `Reserved "${title}" from ${sH}:00 to ${eH}:00.`);
+      Alert.alert(
+        "Booking Confirmed",
+        `Reserved "${autoTitle}" from ${sH}:00 to ${eH}:00. Total: ₹${Math.round((courtCostCents + consumablesCostCents) / 100)}`
+      );
       setIsModalVisible(false);
-      setTitle("");
       setBookedBy("");
       setContactPhone("");
+      setBookingConsumables({});
       void loadData();
     } catch {
       Alert.alert("Error", "Network error creating court booking");
@@ -220,64 +275,162 @@ export function BookingsScreen() {
         />
       )}
 
-      {/* New Booking Modal */}
+      {/* New Booking Modal (Keyboard avoiding & with consumables) */}
       <Modal visible={isModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 10}
+        >
+          <View style={[styles.modalContent, { maxHeight: "90%" }]}>
             <Text style={styles.modalTitle}>Book Court / Facility</Text>
             <Text style={styles.modalSubtitle}>
               Strict overlap protection prevents double bookings in real time.
             </Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Session Title (e.g. Friendly Match, Coaching) *"
-              placeholderTextColor={Colors.textSecondary}
-              value={title}
-              onChangeText={setTitle}
-            />
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              style={{ maxHeight: 460 }}
+            >
+              {phoneLookupNotice && (
+                <View style={styles.phoneLookupBanner}>
+                  <Text style={styles.phoneLookupBannerText}>{phoneLookupNotice}</Text>
+                </View>
+              )}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Customer / Team Name *"
-              placeholderTextColor={Colors.textSecondary}
-              value={bookedBy}
-              onChangeText={setBookedBy}
-            />
+              <Text style={styles.fieldLabel}>Contact Mobile (Auto-Lookup)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 9876543210 (enter 10 digits to auto-fill name)"
+                placeholderTextColor={Colors.textSecondary}
+                value={contactPhone}
+                keyboardType="phone-pad"
+                onChangeText={handlePhoneChange}
+              />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Contact Phone (Optional)"
-              placeholderTextColor={Colors.textSecondary}
-              value={contactPhone}
-              keyboardType="phone-pad"
-              onChangeText={setContactPhone}
-            />
+              <Text style={styles.fieldLabel}>Customer / Team Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Customer / Team Name *"
+                placeholderTextColor={Colors.textSecondary}
+                value={bookedBy}
+                onChangeText={setBookedBy}
+              />
 
-            <Text style={styles.fieldLabel}>Time Slot (Hours in 24hr format)</Text>
-            <View style={styles.hoursRow}>
-              <View style={styles.hourCol}>
-                <Text style={styles.subLabel}>From (HH)</Text>
-                <TextInput
-                  style={styles.hourInput}
-                  value={startHour}
-                  keyboardType="numeric"
-                  onChangeText={setStartHour}
-                  maxLength={2}
-                />
+              <Text style={styles.fieldLabel}>Time Slot (Hours in 24hr format)</Text>
+              <View style={styles.hoursRow}>
+                <View style={styles.hourCol}>
+                  <Text style={styles.subLabel}>From (HH)</Text>
+                  <TextInput
+                    style={styles.hourInput}
+                    value={startHour}
+                    keyboardType="numeric"
+                    onChangeText={setStartHour}
+                    maxLength={2}
+                  />
+                </View>
+                <Text style={styles.hourDash}>—</Text>
+                <View style={styles.hourCol}>
+                  <Text style={styles.subLabel}>To (HH)</Text>
+                  <TextInput
+                    style={styles.hourInput}
+                    value={endHour}
+                    keyboardType="numeric"
+                    onChangeText={setEndHour}
+                    maxLength={2}
+                  />
+                </View>
               </View>
-              <Text style={styles.hourDash}>—</Text>
-              <View style={styles.hourCol}>
-                <Text style={styles.subLabel}>To (HH)</Text>
-                <TextInput
-                  style={styles.hourInput}
-                  value={endHour}
-                  keyboardType="numeric"
-                  onChangeText={setEndHour}
-                  maxLength={2}
-                />
+
+              {/* Consumables Selection */}
+              <View style={styles.consumablesSection}>
+                <Text style={styles.consumablesSectionTitle}>
+                  📦 Add Consumables & Equipment (Optional)
+                </Text>
+                <Text style={styles.consumablesSectionSub}>
+                  Attach n consumables items against this reservation
+                </Text>
+
+                {ACADEMY_CONSUMABLES.map((item) => {
+                  const qty = bookingConsumables[item.id] || 0;
+                  return (
+                    <View key={item.id} style={styles.consumableItemRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.consumableItemName}>{item.name}</Text>
+                        <Text style={styles.consumableItemSub}>
+                          ₹{item.price} / {item.unit} • {item.category}
+                        </Text>
+                      </View>
+                      <View style={styles.stepperContainer}>
+                        <TouchableOpacity
+                          style={styles.stepperBtn}
+                          onPress={() => updateConsumableQty(item.id, -1)}
+                          disabled={qty === 0}
+                        >
+                          <Text
+                            style={[
+                              styles.stepperBtnText,
+                              qty === 0 && styles.stepperBtnDisabled,
+                            ]}
+                          >
+                            -
+                          </Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stepperQty}>{qty}</Text>
+                        <TouchableOpacity
+                          style={styles.stepperBtn}
+                          onPress={() => updateConsumableQty(item.id, 1)}
+                        >
+                          <Text style={styles.stepperBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                {/* Price Breakdown */}
+                <View style={styles.priceSummaryBox}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>
+                      Court Rental (
+                      {Math.max(
+                        1,
+                        (parseInt(endHour, 10) || 18) - (parseInt(startHour, 10) || 16)
+                      )}
+                      h):
+                    </Text>
+                    <Text style={styles.summaryValue}>
+                      ₹
+                      {Math.max(
+                        1,
+                        (parseInt(endHour, 10) || 18) - (parseInt(startHour, 10) || 16)
+                      ) * 800}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>
+                      Consumables (
+                      {Object.values(bookingConsumables).reduce((a, b) => a + b, 0)}{" "}
+                      items):
+                    </Text>
+                    <Text style={styles.summaryValue}>₹{consumablesTotal}</Text>
+                  </View>
+                  <View style={[styles.summaryRow, styles.summaryTotalRow]}>
+                    <Text style={styles.summaryTotalLabel}>Total Reservation:</Text>
+                    <Text style={styles.summaryTotalValue}>
+                      ₹
+                      {Math.max(
+                        1,
+                        (parseInt(endHour, 10) || 18) - (parseInt(startHour, 10) || 16)
+                      ) *
+                        800 +
+                        consumablesTotal}
+                    </Text>
+                  </View>
+                </View>
               </View>
-            </View>
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -299,7 +452,7 @@ export function BookingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -400,4 +553,76 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: "center", marginTop: Spacing.xxl, padding: Spacing.xl },
   emptyTitle: { fontSize: Fonts.sizes.lg, fontWeight: "700", color: Colors.textPrimary },
   emptySubtitle: { fontSize: Fonts.sizes.md, color: Colors.textSecondary, textAlign: "center", marginTop: Spacing.xs },
+  phoneLookupBanner: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+  },
+  phoneLookupBannerText: { color: "#60A5FA", fontSize: 12, fontWeight: "700" },
+  consumablesSection: {
+    backgroundColor: Colors.screenBackground,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  consumablesSectionTitle: { fontSize: 13, fontWeight: "800", color: Colors.textPrimary },
+  consumablesSectionSub: { fontSize: 11, color: Colors.textSecondary, marginBottom: 8 },
+  consumableItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  consumableItemName: { fontSize: 12, fontWeight: "700", color: Colors.textPrimary },
+  consumableItemSub: { fontSize: 11, color: Colors.textSecondary },
+  stepperContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.listBackground,
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  stepperBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperBtnText: { fontSize: 15, fontWeight: "800", color: Colors.textPrimary },
+  stepperBtnDisabled: { color: Colors.textSecondary },
+  stepperQty: { fontSize: 12, fontWeight: "800", color: Colors.textPrimary, minWidth: 18, textAlign: "center" },
+  priceSummaryBox: {
+    backgroundColor: Colors.listBackground,
+    borderRadius: 6,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
+  summaryLabel: { fontSize: 11, color: Colors.textSecondary },
+  summaryValue: { fontSize: 11, fontWeight: "600", color: Colors.textPrimary },
+  summaryTotalRow: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    marginBottom: 0,
+  },
+  summaryTotalLabel: { fontSize: 12, fontWeight: "800", color: Colors.textPrimary },
+  summaryTotalValue: { fontSize: 13, fontWeight: "900", color: Colors.primary },
 });

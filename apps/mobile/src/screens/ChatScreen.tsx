@@ -18,25 +18,33 @@ import { ChatBubble } from "../components/ChatBubble";
 import { TypingDots } from "../components/TypingDots";
 import { AttachmentModal } from "../components/AttachmentModal";
 import { EmojiPickerModal } from "../components/EmojiPickerModal";
-import { TemplateFormModal } from "../components/TemplateFormModal";
 import { PaperclipIcon, SmileyIcon, MicIcon, SendIcon, TrashIcon } from "../components/Icons";
 import { Colors, Fonts, Spacing, Radius } from "../theme/tokens";
 import { MOCK_CURRENT_USER, MOCK_BOT_USER, MOCK_MESSAGES } from "../data/mockData";
-import { showNewMessageNotification, showFormSubmissionNotification } from "../services/notifications";
+import { showNewMessageNotification } from "../services/notifications";
 import {
   getMessages,
   sendMessage,
   markMessageRead,
   uploadMediaFile,
-  getChatTemplates,
-  submitTemplateForm,
-  DEFAULT_FALLBACK_TEMPLATES,
   type SendMessageOptions,
 } from "../api/client";
+import {
+  fetchPlayers,
+  fetchBookings,
+  fetchInvoices,
+  fetchBatches,
+  fetchSports,
+  fetchFacilities,
+  MOCK_PLAYERS,
+  MOCK_BOOKINGS,
+  MOCK_INVOICES,
+} from "../academy/api";
+import { ACADEMY_CONSUMABLES } from "./DashboardScreen";
 import { useSocket } from "../hooks/useSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { pickFile, formatDuration, type FilePickerType } from "../utils/filePicker";
-import type { Message, MessageStatus, ChatTemplateItem } from "@chatbot/shared-types";
+import type { Message, MessageStatus } from "@chatbot/shared-types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Chat">;
 
@@ -49,8 +57,6 @@ export function ChatScreen({ route, navigation }: Props) {
   const [attachmentModalVisible, setAttachmentModalVisible] = useState(false);
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [templates, setTemplates] = useState<ChatTemplateItem[]>(DEFAULT_FALLBACK_TEMPLATES);
-  const [activeTemplateForModal, setActiveTemplateForModal] = useState<ChatTemplateItem | null>(null);
 
   const listRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,9 +81,10 @@ export function ChatScreen({ route, navigation }: Props) {
     }
   }, [recordingError]);
 
-  // Set up header with prominent dashboard link
+  // Set up header with prominent dashboard link and single assistant title
   useEffect(() => {
     navigation.setOptions({
+      headerTitle: "OFA Assistant",
       headerRight: () => (
         <TouchableOpacity
           style={styles.headerDashboardBtn}
@@ -120,67 +127,200 @@ export function ChatScreen({ route, navigation }: Props) {
     }
   }, [messages]);
 
-  // ── Load Chat Templates for Interactive Forms ───────────────────────────
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const fetched = await getChatTemplates(MOCK_CURRENT_USER.tenantId);
-        if (mounted && fetched && fetched.length > 0) {
-          setTemplates(fetched);
-        }
-      } catch {
-        // Fall back to pre-configured templates
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // ── OFA Assistant Read-Only Table Query & Mutation Protection ───────────
+  const queryOFATables = useCallback(async (userQuery: string): Promise<{ isHandled: boolean; reply: string }> => {
+    const lower = userQuery.toLowerCase().trim();
 
-  // ── Handle Slide-Up Interactive Template Form Submission ────────────────
-  const handleFormSubmit = async (formData: Record<string, string>) => {
-    if (!activeTemplateForModal) return;
-    try {
-      const res = await submitTemplateForm({
-        conversationId,
-        tenantId: MOCK_CURRENT_USER.tenantId,
-        command: activeTemplateForModal.command,
-        senderId: MOCK_CURRENT_USER.id,
-        senderName: MOCK_CURRENT_USER.name,
-        formData,
-      });
+    // 1. Mutation attempt detection - OFA Assistant is strictly read-only
+    const isMutation = /\b(add|create|insert|new|book|booking|admit|admission|delete|remove|cancel|drop|modify|update|edit|change)\b/i.test(lower)
+      && !/\b(show|list|view|display|fetch|get|check|how many|status|details|info|tell me|who)\b/i.test(lower);
 
-      // Detect offline fallback — submissionId starts with "SUB-" but no message means server was unreachable
-      const isOfflineFallback = !res.message;
-      if (isOfflineFallback) {
-        Alert.alert(
-          "⚠️ Server Unreachable",
-          "Your form was not saved to the database or Google Sheet. Please check your internet connection and ensure the server is running, then try again.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
+    const isExplicitMutation = /\b(delete booking|cancel booking|drop player|remove player|update fee|edit player|add player|admit player|book slot|book court|create booking)\b/i.test(lower);
 
-      if (res.message) {
-        setMessages((prev) => {
-          const exists = prev.some((m) => m.id === res.message!.id);
-          if (exists) return prev;
-          return [...prev, res.message!];
-        });
-        scrollToBottom();
-        // Fire push notification for form submission
-        showFormSubmissionNotification({
-          templateName: activeTemplateForModal.name,
-          submitterName: MOCK_CURRENT_USER.name,
-          ref: res.submissionId || "New",
-        }).catch(console.error);
-      }
-      setActiveTemplateForModal(null);
-    } catch (err: any) {
-      Alert.alert("Submission Failed", err.message || "Failed to submit form");
+    if (isExplicitMutation || (isMutation && /\b(player|court|slot|booking|admission|fee|invoice|consumable)\b/i.test(lower))) {
+      return {
+        isHandled: true,
+        reply: "🔒 **Read-Only Access:** As OFA Assistant, I have read-only access to all academy tables and cannot create, modify, or delete any records.\n\n👉 To add or modify records, please use the direct action buttons on the left navigation tabs: **'+ New Booking'**, **'+ Admit Player'**, or **'+ Pay Fee'**.",
+      };
     }
-  };
+
+    // 2. Phone number lookup (10 digits anywhere in query)
+    const phoneMatch = userQuery.match(/\b\d{10}\b/);
+    if (phoneMatch) {
+      const phone = phoneMatch[0];
+      let players: any[] = MOCK_PLAYERS;
+      let bookings: any[] = MOCK_BOOKINGS;
+      try {
+        const pRes = await fetchPlayers();
+        if (pRes && pRes.players && pRes.players.length > 0) players = pRes.players;
+        const b = await fetchBookings();
+        if (b && b.length > 0) bookings = b;
+      } catch {
+        // use fallbacks
+      }
+
+      const matchedPlayer = players.find(
+        (p: any) =>
+          (p.guardianPhone && p.guardianPhone.replace(/\D/g, "").includes(phone)) ||
+          (p.mobile && p.mobile.replace(/\D/g, "").includes(phone)) ||
+          (p.contactPhone && p.contactPhone.replace(/\D/g, "").includes(phone))
+      );
+      const matchedBookings = bookings.filter(
+        (b: any) =>
+          (b.contactPhone && b.contactPhone.replace(/\D/g, "").includes(phone)) ||
+          (b.phone && b.phone.replace(/\D/g, "").includes(phone)) ||
+          (b.bookedBy && b.bookedBy.toLowerCase().includes(phone))
+      );
+
+      if (matchedPlayer || matchedBookings.length > 0) {
+        let text = `🔍 **Search Results for Phone: ${phone}**\n\n`;
+        if (matchedPlayer) {
+          const playerName = matchedPlayer.fullName || `${matchedPlayer.firstName || ""} ${matchedPlayer.lastName || ""}`.trim() || "Player";
+          const sportName = matchedPlayer.primarySport?.name || (matchedPlayer.sports ? matchedPlayer.sports.map((s: any) => s.name).join(", ") : "General");
+          text += `👤 **Player Profile:**\n`;
+          text += `• **Name:** ${playerName}\n`;
+          text += `• **Player Code:** ${matchedPlayer.playerCode || "N/A"}\n`;
+          text += `• **Status:** ${matchedPlayer.status || "ACTIVE"}\n`;
+          text += `• **Sport:** ${sportName}\n`;
+          text += `• **Venue:** ${matchedPlayer.venue || "OFA-1"}\n`;
+          text += `• **Phone / Guardian:** ${matchedPlayer.guardianPhone || matchedPlayer.mobile || "N/A"}\n`;
+          if (matchedPlayer.guardianName) text += `• **Guardian Name:** ${matchedPlayer.guardianName}\n`;
+          text += `\n`;
+        }
+        if (matchedBookings.length > 0) {
+          text += `📅 **Associated Bookings (${matchedBookings.length}):**\n`;
+          matchedBookings.forEach((b: any, i: number) => {
+            const fac = b.facility?.name || b.facilityName || b.title || "Court Slot";
+            const amount = b.totalAmount || (b.totalAmountCents ? b.totalAmountCents / 100 : 0);
+            text += `${i + 1}. **${fac}** on ${b.bookingDate || b.startTime?.slice(0, 10)} — ₹${amount} [${b.status || b.paymentStatus || "CONFIRMED"}]\n`;
+          });
+        }
+        return { isHandled: true, reply: text };
+      } else {
+        return {
+          isHandled: true,
+          reply: `🔍 No records found in Players or Bookings matching phone number **${phone}**.`,
+        };
+      }
+    }
+
+    // 3. Consumables table
+    if (lower.includes("consumable") || lower.includes("inventory") || lower.includes("item price") || lower.includes("equipment price") || lower.includes("shuttle") || lower.includes("grip")) {
+      let text = `🏸 **OFA Consumables & Inventory Table** (${ACADEMY_CONSUMABLES.length} items):\n\n`;
+      text += `| # | Item Name | Category | Rate | Unit |\n`;
+      text += `|---|---|---|---|---|\n`;
+      ACADEMY_CONSUMABLES.forEach((item, i) => {
+        text += `| ${i + 1} | **${item.name}** | ${item.category} | **₹${item.price}** | per ${item.unit} |\n`;
+      });
+      text += `\n💡 _Consumables can be added to any slot booking with live price calculation via '+ New Booking' on the left navigation tabs._`;
+      return { isHandled: true, reply: text };
+    }
+
+    // 4. Players / Admissions table
+    if (lower.includes("player") || lower.includes("admission") || lower.includes("student") || lower.includes("trainee") || lower.includes("enrolled")) {
+      let playerList: any[] = MOCK_PLAYERS;
+      try {
+        const pRes = await fetchPlayers();
+        if (pRes && pRes.players && pRes.players.length > 0) playerList = pRes.players;
+      } catch {
+        // fallback
+      }
+
+      let text = `👥 **OFA Players Table** (Total: ${playerList.length} players enrolled):\n\n`;
+      playerList.slice(0, 10).forEach((p: any, i: number) => {
+        const sportName = p.primarySport?.name || (p.sports ? p.sports.map((s: any) => s.name).join(", ") : "General");
+        const name = p.fullName || `${p.firstName || ""} ${p.lastName || ""}`.trim() || "Player";
+        const phone = p.guardianPhone || p.mobile || "N/A";
+        text += `${i + 1}. **${name}** [${p.status || "ACTIVE"}]\n`;
+        text += `   • Sport: ${sportName} | Code: ${p.playerCode || "N/A"}\n`;
+        text += `   • Phone: ${phone}\n`;
+      });
+      if (playerList.length > 10) {
+        text += `\n_...and ${playerList.length - 10} more players in the directory._\n`;
+      }
+      return { isHandled: true, reply: text };
+    }
+
+    // 5. Bookings / Slots table
+    if (lower.includes("booking") || lower.includes("slot") || lower.includes("court") || lower.includes("reservation")) {
+      let bookings = MOCK_BOOKINGS;
+      try {
+        const b = await fetchBookings();
+        if (b.length > 0) bookings = b;
+      } catch {
+        // fallback
+      }
+
+      let text = `📅 **OFA Slot Bookings Table** (Total: ${bookings.length} bookings):\n\n`;
+      bookings.slice(0, 8).forEach((b: any, i: number) => {
+        text += `${i + 1}. **${b.facilityName || b.title}**\n`;
+        text += `   • Date: ${b.bookingDate} | Time: ${b.startTime} - ${b.endTime}\n`;
+        text += `   • Booked By: ${b.bookedBy} (${b.phone || "N/A"})\n`;
+        text += `   • Amount: ₹${b.totalAmount} | Status: ${b.paymentStatus}\n`;
+      });
+      if (bookings.length > 8) {
+        text += `\n_...and ${bookings.length - 8} more bookings recorded._\n`;
+      }
+      return { isHandled: true, reply: text };
+    }
+
+    // 6. Invoices / Payments / Fees table
+    if (lower.includes("invoice") || lower.includes("payment") || lower.includes("fee") || lower.includes("revenue") || lower.includes("paid")) {
+      let invoices = MOCK_INVOICES;
+      try {
+        const inv = await fetchInvoices();
+        if (inv.length > 0) invoices = inv;
+      } catch {
+        // fallback
+      }
+
+      let text = `💳 **OFA Invoices & Payments Table** (Total: ${invoices.length} invoices):\n\n`;
+      invoices.slice(0, 8).forEach((inv: any, i: number) => {
+        text += `${i + 1}. **${inv.invoiceNumber}** — ${inv.playerName}\n`;
+        text += `   • Amount: ₹${inv.totalAmount} | Paid: ₹${inv.paidAmount} [${inv.status}]\n`;
+        text += `   • Due Date: ${inv.dueDate}\n`;
+      });
+      return { isHandled: true, reply: text };
+    }
+
+    // 7. Facilities / Venues
+    if (lower.includes("facility") || lower.includes("venue") || lower.includes("ofa-1") || lower.includes("ofa-2") || lower.includes("ofa-3")) {
+      let facilities: any[] = [];
+      try {
+        facilities = await fetchFacilities();
+      } catch {}
+
+      let text = `🏟️ **OFA Venues & Facilities Table**:\n\n`;
+      text += `• **Admission Venues:** OFA-1, OFA-2, OFA-3\n`;
+      if (facilities.length > 0) {
+        text += `• **Active Courts & Facilities:**\n`;
+        facilities.forEach((f: any, i: number) => {
+          text += `  ${i + 1}. **${f.name}** (${f.sportName || "Court"}) — ₹${f.hourlyRate || 500}/hr\n`;
+        });
+      } else {
+        text += `• **Courts:** Badminton Courts 1-4, Tennis Court, Football Turf, Cricket Nets, Pickleball Arena\n`;
+      }
+      return { isHandled: true, reply: text };
+    }
+
+    // 8. Sports
+    if (lower.includes("sport") || lower.includes("game")) {
+      return {
+        isHandled: true,
+        reply: `⚡ **OFA Approved Sports Disciplines:**\n\n1. ⚽ **Football**\n2. 🏏 **Cricket**\n3. 🏸 **Badminton**\n4. 🎾 **Tennis**\n5. 🏓 **Pickleball**\n6. 🏓 **Table Tennis**\n\nAll sports are available across venues **OFA-1, OFA-2, and OFA-3**!`,
+      };
+    }
+
+    // 9. Tables Overview
+    if (lower.includes("table") || lower.includes("database") || lower.includes("what can you access") || lower.includes("tables")) {
+      return {
+        isHandled: true,
+        reply: `📊 **OFA Assistant Database Tables Access (Read-Only):**\n\nI have instant, real-time read access to all OFA academy tables:\n1. 👥 **Players & Admissions** — Profiles, sports, venues (OFA-1/2/3), emergency contacts\n2. 📅 **Slot Bookings** — Court rentals, time slots, customer phone numbers, status\n3. 🏸 **Consumables & Inventory** — Items list with unit prices and availability\n4. 💳 **Invoices & Payments** — Fee assignments, receipts, pending amounts\n5. 🏟️ **Venues & Facilities** — OFA-1, OFA-2, OFA-3 courts and turfs\n6. ⚡ **Sports & Batches** — Football, Cricket, Badminton, Tennis, Pickleball, Table Tennis\n\n🔒 _Note: I cannot modify or delete records. To add or update records, please use the left navigation buttons._`,
+      };
+    }
+
+    return { isHandled: false, reply: "" };
+  }, []);
 
   const { emitTypingStart, emitTypingStop } = useSocket({
     conversationId,
@@ -274,25 +414,40 @@ export function ChatScreen({ route, navigation }: Props) {
         );
         setIsBotTyping(true); // Bot reply incoming
 
-        // If message was sent via local fallback (server unreachable), simulate a helpful bot response
+        // Check OFA table queries or mutation restrictions
+        const tableCheck = await queryOFATables(text);
+        if (tableCheck.isHandled) {
+          setTimeout(() => {
+            setIsBotTyping(false);
+            const botMsg: Message = {
+              id: `bot-ofa-${Date.now()}`,
+              conversationId,
+              senderId: MOCK_BOT_USER.id,
+              sender: { id: MOCK_BOT_USER.id, name: "OFA Assistant", role: "bot" },
+              body: tableCheck.reply,
+              kind: "text",
+              status: "read",
+              createdAt: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, botMsg]);
+            scrollToBottom();
+            showNewMessageNotification({
+              senderName: "OFA Assistant",
+              messageText: tableCheck.reply,
+              conversationId,
+            }).catch(console.error);
+          }, 500);
+          return;
+        }
+
+        // If message was sent via local fallback (server unreachable), provide OFA Assistant response
         if (saved.id.startsWith("msg-local-")) {
           setTimeout(() => {
             setIsBotTyping(false);
-            const lower = text.toLowerCase();
-            let replyText = "Hi! I'm your OFA Assistant. To get real AI responses, please ensure the app server is reachable. I can help with court bookings, coaching, tournaments & memberships — just type a slash command like /booking, /membership, /trial, /tournament, /coaching, or /feedback!";
-            if (lower.includes("booking") || lower.includes("court") || lower.includes("reserve") || lower.includes("slot")) {
-              replyText = "I'd love to help with your court booking! Please type */booking* to open the interactive booking form, and I'll record all the details for you. 🏅";
-            } else if (lower.includes("membership") || lower.includes("register") || lower.includes("join")) {
-              replyText = "Great! Type */membership* to open the academy membership registration form and get started. 🏅";
-            } else if (lower.includes("coach") || lower.includes("training") || lower.includes("session")) {
-              replyText = "To schedule a coaching session, type */coaching* to open the consultation form and our team will get back to you. 🏆";
-            } else if (lower.includes("tournament") || lower.includes("competition") || lower.includes("league")) {
-              replyText = "Exciting! Type */tournament* to register for an upcoming tournament or league. 🏆";
-            } else if (lower.includes("trial") || lower.includes("assessment") || lower.includes("evaluation")) {
-              replyText = "Book a free trial session by typing */trial* to open the assessment form. We look forward to meeting you! ⚡";
-            } else if (lower.includes("price") || lower.includes("fee") || lower.includes("cost") || lower.includes("rate")) {
-              replyText = "Court rentals start from ₹500/hr for badminton and ₹800/hr for tennis. Coaching packages start from ₹3,000/month. Would you like to book a slot? Type */booking* to proceed! 🏅";
-            }
+            const replyText =
+              "Hi! I'm OFA Assistant. I have read-only access to all academy tables (Players, Bookings, Invoices, Consumables, Facilities, Sports).\n\n" +
+              "Ask me anytime to show player details, check bookings, look up phone numbers, or view the consumables list!\n\n" +
+              "To make new bookings or admit players, please use the direct action buttons on the left navigation tabs: '+ New Booking', '+ Admit Player', or '+ Pay Fee'.";
 
             const botMsg: Message = {
               id: `bot-local-${Date.now()}`,
@@ -306,13 +461,12 @@ export function ChatScreen({ route, navigation }: Props) {
             };
             setMessages((prev) => [...prev, botMsg]);
             scrollToBottom();
-            // Fire push notification for new bot reply
             showNewMessageNotification({
               senderName: "OFA Assistant",
               messageText: replyText,
               conversationId,
             }).catch(console.error);
-          }, 1200);
+          }, 800);
         }
       } catch {
         if (!retrying) {
@@ -340,25 +494,13 @@ export function ChatScreen({ route, navigation }: Props) {
         }
       }
     },
-    [conversationId]
+    [conversationId, queryOFATables, scrollToBottom]
   );
 
   // ── Handle text send ──────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
-
-    // Check if user entered a slash command for a template -> open interactive form!
-    if (text.startsWith("/")) {
-      const cmd = text.split(/\s+/)[0].toLowerCase().replace(/^\//, "");
-      const matchedTpl = templates.find((t) => t.command.toLowerCase() === cmd);
-      if (matchedTpl) {
-        setInputText("");
-        emitTypingStop();
-        setActiveTemplateForModal(matchedTpl);
-        return;
-      }
-    }
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
@@ -548,60 +690,6 @@ export function ChatScreen({ route, navigation }: Props) {
         )}
       </View>
 
-      {/* Quick Sports Template Chips */}
-      <View style={styles.quickChipsContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickChipsScroll}
-        >
-          {templates.map((item) => (
-            <TouchableOpacity
-              key={item.command}
-              style={styles.quickChip}
-              onPress={() => setActiveTemplateForModal(item)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.quickChipText}>
-                {item.icon || "📋"} /{item.command}
-              </Text>
-            </TouchableOpacity>
-          ))}
-
-          {MOCK_CURRENT_USER.role === "admin" && (
-            <>
-              <TouchableOpacity
-                style={[styles.quickChip, styles.quickChipAdmin]}
-                onPress={() => setInputText("/create ")}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.quickChipText, styles.quickChipAdminText]}>
-                  🛠️ /create
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickChip, styles.quickChipAdmin]}
-                onPress={() => setInputText("/modify ")}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.quickChipText, styles.quickChipAdminText]}>
-                  ✏️ /modify
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickChip, styles.quickChipAdmin]}
-                onPress={() => setInputText("/delete ")}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.quickChipText, styles.quickChipAdminText]}>
-                  🗑️ /delete
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </ScrollView>
-      </View>
-
       {/* WhatsApp Web Light-Theme Composer Bar */}
       <View style={styles.composer}>
         {isRecording ? (
@@ -710,15 +798,6 @@ export function ChatScreen({ route, navigation }: Props) {
           setInputText((prev) => prev + emoji);
         }}
       />
-
-      {/* Slide-Up In-Chat Interactive Template Form Modal */}
-      <TemplateFormModal
-        visible={!!activeTemplateForModal}
-        template={activeTemplateForModal}
-        onClose={() => setActiveTemplateForModal(null)}
-        onSubmit={handleFormSubmit}
-        defaultUserName={MOCK_CURRENT_USER.name}
-      />
     </KeyboardAvoidingView>
   );
 }
@@ -746,41 +825,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 1,
-  },
-  quickChipsContainer: {
-    backgroundColor: "#F7F8FA",
-    borderTopWidth: 1,
-    borderTopColor: "#E9EDEF",
-    paddingVertical: 6,
-  },
-  quickChipsScroll: {
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  quickChip: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#D1D7DB",
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-  },
-  quickChipAdmin: {
-    backgroundColor: "#FFF8E1",
-    borderColor: "#FFE082",
-  },
-  quickChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111B21",
-  },
-  quickChipAdminText: {
-    color: "#E65100",
   },
   composer: {
     flexDirection: "row",
