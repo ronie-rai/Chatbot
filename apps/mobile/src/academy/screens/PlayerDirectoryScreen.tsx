@@ -5,6 +5,7 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -35,16 +36,88 @@ export function PlayerDirectoryScreen({ route }: Props) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  // Modal State for Admission
+  // Modal State for Admission matching user specification
   const [isAdmitModalVisible, setIsAdmitModalVisible] = useState(false);
   const [fullName, setFullName] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("2012-06-15");
-  const [gender, setGender] = useState("MALE");
+  const [email, setEmail] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("2002-01-01");
+  const [age, setAge] = useState("24");
+  const [gender, setGender] = useState("Male");
+  const [address, setAddress] = useState("");
+
+  const [venue, setVenue] = useState("OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)");
   const [selectedSportId, setSelectedSportId] = useState("");
+  const [admissionDate, setAdmissionDate] = useState("12-Oct-2026");
+  const [startTime, setStartTime] = useState("06:00 AM");
+  const [endTime, setEndTime] = useState("07:00 AM");
+  const [sessionsPerWeek, setSessionsPerWeek] = useState("Any / Not specified");
+  const [monthlyFee, setMonthlyFee] = useState("3500");
+  const [admissionFee, setAdmissionFee] = useState("1000");
+
+  const [coachingType, setCoachingType] = useState("Group Coaching");
+  const [ageSegment, setAgeSegment] = useState("Adults (19+)");
+  const [trainingGroup, setTrainingGroup] = useState("-- Select group --");
+
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
-  const [medicalNotes, setMedicalNotes] = useState("");
+  const [idCardNumber, setIdCardNumber] = useState("");
+  const [copyStatus, setCopyStatus] = useState("Approved");
+  const [temporaryPassword, setTemporaryPassword] = useState("Welcome@123");
+  const [hasPhotograph, setHasPhotograph] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Picker modal state
+  const [pickerConfig, setPickerConfig] = useState<{
+    title: string;
+    options: { label: string; value: string }[];
+    selectedValue: string;
+    onSelect: (val: string) => void;
+  } | null>(null);
+
+  const handleDobChange = (text: string) => {
+    setDateOfBirth(text);
+    const yearMatch = text.match(/\b(19\d\d|20\d\d)\b/);
+    if (yearMatch) {
+      const birthYear = parseInt(yearMatch[1], 10);
+      const currentYear = new Date().getFullYear();
+      const calculatedAge = Math.max(0, currentYear - birthYear);
+      setAge(String(calculatedAge));
+      if (calculatedAge >= 19) setAgeSegment("Adults (19+)");
+      else if (calculatedAge >= 16) setAgeSegment("Under-19 (U19)");
+      else if (calculatedAge >= 14) setAgeSegment("Under-16 (U16)");
+      else if (calculatedAge >= 12) setAgeSegment("Under-14 (U14)");
+      else if (calculatedAge >= 10) setAgeSegment("Under-12 (U12)");
+      else if (calculatedAge >= 8) setAgeSegment("Under-10 (U10)");
+      else setAgeSegment("Under-8 (U8)");
+    }
+  };
+
+  const resetForm = () => {
+    setFullName("");
+    setEmail("");
+    setMobileNumber("");
+    setDateOfBirth("2002-01-01");
+    setAge("24");
+    setGender("Male");
+    setAddress("");
+    setVenue("OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)");
+    setAdmissionDate("12-Oct-2026");
+    setStartTime("06:00 AM");
+    setEndTime("07:00 AM");
+    setSessionsPerWeek("Any / Not specified");
+    setMonthlyFee("3500");
+    setAdmissionFee("1000");
+    setCoachingType("Group Coaching");
+    setAgeSegment("Adults (19+)");
+    setTrainingGroup("-- Select group --");
+    setGuardianName("");
+    setGuardianPhone("");
+    setIdCardNumber("");
+    setCopyStatus("Approved");
+    setTemporaryPassword("Welcome@123");
+    setHasPhotograph(false);
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -82,25 +155,63 @@ export function PlayerDirectoryScreen({ route }: Props) {
   };
 
   const handleAdmit = async () => {
-    if (!fullName.trim() || !guardianName.trim() || !guardianPhone.trim()) {
-      Alert.alert("Missing Fields", "Full name, Guardian name, and Guardian phone are required.");
+    if (!fullName.trim()) {
+      Alert.alert("Missing Name", "Player full name is required.");
+      return;
+    }
+    if (!email.trim() || !email.includes("@")) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
+      return;
+    }
+    if (!mobileNumber.trim()) {
+      Alert.alert("Missing Mobile", "Mobile number is required.");
       return;
     }
     if (!selectedSportId) {
-      Alert.alert("Missing Sport", "Please select a primary sport.");
+      Alert.alert("Missing Sport", "Please select a preferred sport.");
+      return;
+    }
+    if (!monthlyFee.trim() || isNaN(Number(monthlyFee))) {
+      Alert.alert("Missing Monthly Fee", "Please enter a valid monthly fee amount.");
+      return;
+    }
+    if (!temporaryPassword.trim()) {
+      Alert.alert("Missing Password", "Temporary account password is required.");
       return;
     }
 
     setSubmitting(true);
     try {
+      const selectedSport = sports.find((s) => s.id === selectedSportId);
       const res = await admitPlayer({
         fullName: fullName.trim(),
-        dateOfBirth: dateOfBirth.trim(),
+        email: email.trim(),
+        mobileNumber: mobileNumber.trim(),
+        dateOfBirth: dateOfBirth.trim() || new Date().toISOString().slice(0, 10),
+        age: parseInt(age, 10) || undefined,
         gender,
+        address: address.trim() || undefined,
+
+        venue,
         primarySportId: selectedSportId,
-        guardianName: guardianName.trim(),
-        guardianPhone: guardianPhone.trim(),
-        medicalNotes: medicalNotes.trim() || undefined,
+        primarySportName: selectedSport?.name || "Selected Sport",
+        admissionDate,
+        startTime,
+        endTime,
+        sessionsPerWeek,
+        monthlyFee: parseFloat(monthlyFee) || 0,
+        admissionFee: parseFloat(admissionFee) || 0,
+
+        coachingType,
+        ageSegment,
+        trainingGroup,
+
+        guardianName: guardianName.trim() || fullName.trim(),
+        guardianPhone: guardianPhone.trim() || mobileNumber.trim(),
+        idCardNumber: idCardNumber.trim() || undefined,
+        copyStatus,
+        temporaryPassword: temporaryPassword.trim(),
+        photoUrl: hasPhotograph ? "player-photo-uploaded.jpg" : undefined,
       });
 
       if (!res.ok || !res.player) {
@@ -110,13 +221,10 @@ export function PlayerDirectoryScreen({ route }: Props) {
 
       Alert.alert(
         "Admission Successful",
-        `Assigned ID: ${res.player.playerCode}\nPlayer: ${res.player.fullName}`
+        `Assigned ID: ${res.player.playerCode}\nPlayer: ${res.player.fullName}\nSport: ${selectedSport?.name || "Sport"}`
       );
       setIsAdmitModalVisible(false);
-      setFullName("");
-      setGuardianName("");
-      setGuardianPhone("");
-      setMedicalNotes("");
+      resetForm();
       void loadData();
     } catch {
       Alert.alert("Error", "Unexpected network error during admission");
@@ -146,11 +254,11 @@ export function PlayerDirectoryScreen({ route }: Props) {
             <View style={styles.nameRow}>
               <Text style={styles.playerName}>{displayName}</Text>
               <View style={styles.codeBadge}>
-                <Text style={styles.codeText}>{item.playerCode || "OFA-*"}</Text>
+                <Text style={styles.codeText}>{item.playerCode}</Text>
               </View>
             </View>
             <Text style={styles.sportText}>
-              ⚽ {sportName} • {item.gender || "MALE"}
+              ⚽ {sportName} • {item.gender || "Male"}
             </Text>
           </View>
           <View
@@ -315,118 +423,595 @@ export function PlayerDirectoryScreen({ route }: Props) {
         )
       )}
 
-      {/* Admission Modal */}
+      {/* Comprehensive Dark-Themed Admission Modal */}
       <Modal visible={isAdmitModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Admit New Player</Text>
-            <Text style={styles.modalSubtitle}>
-              Generates an atomic OFA-* identifier sequence upon registration.
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Player Full Name *"
-              placeholderTextColor={Colors.textSecondary}
-              value={fullName}
-              onChangeText={setFullName}
-            />
-
-            <View style={styles.rowInputs}>
-              <TextInput
-                style={[styles.input, styles.halfInput]}
-                placeholder="DOB (YYYY-MM-DD)"
-                placeholderTextColor={Colors.textSecondary}
-                value={dateOfBirth}
-                onChangeText={setDateOfBirth}
-              />
-              <View style={[styles.genderRow, styles.halfInput]}>
-                {["MALE", "FEMALE"].map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[styles.genderBtn, gender === g && styles.genderBtnActive]}
-                    onPress={() => setGender(g)}
-                  >
-                    <Text
-                      style={[
-                        styles.genderText,
-                        gender === g && styles.genderTextActive,
-                      ]}
-                    >
-                      {g[0]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+          <View style={styles.modalContainer}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Admit New Player</Text>
+                <Text style={styles.modalSubtitle}>
+                  Generates an atomic OFA-* identifier sequence upon registration.
+                </Text>
               </View>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => setIsAdmitModalVisible(false)}
+              >
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
             </View>
 
-            <Text style={styles.fieldLabel}>Primary Sport *</Text>
-            <View style={styles.sportPills}>
-              {(sports || []).map((s) => (
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* SECTION 1: Personal Profile Details */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionIcon}>👤</Text>
+                  <Text style={[styles.sectionTitle, { color: "#38BDF8" }]}>
+                    Personal Profile Details
+                  </Text>
+                </View>
+
+                {/* Full Name & Email */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      FULL NAME <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. Naman Agarwal"
+                      placeholderTextColor="#6E7681"
+                      value={fullName}
+                      onChangeText={setFullName}
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      EMAIL ADDRESS <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. client@email.com"
+                      placeholderTextColor="#6E7681"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={setEmail}
+                    />
+                  </View>
+                </View>
+
+                {/* Mobile, DOB, Age */}
+                <View style={styles.gridRow}>
+                  <View style={[styles.gridCol, { flex: 1.2 }]}>
+                    <Text style={styles.label}>
+                      MOBILE NUMBER <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. 9535682835"
+                      placeholderTextColor="#6E7681"
+                      keyboardType="phone-pad"
+                      value={mobileNumber}
+                      onChangeText={setMobileNumber}
+                    />
+                  </View>
+                  <View style={[styles.gridCol, { flex: 1.2 }]}>
+                    <Text style={styles.label}>DATE OF BIRTH</Text>
+                    <View style={styles.iconInputWrap}>
+                      <TextInput
+                        style={[styles.darkInput, { paddingRight: 32 }]}
+                        placeholder="dd-----yyyy"
+                        placeholderTextColor="#6E7681"
+                        value={dateOfBirth}
+                        onChangeText={handleDobChange}
+                      />
+                      <Text style={styles.inputInnerIcon}>📅</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.gridCol, { flex: 0.8 }]}>
+                    <Text style={styles.label}>AGE</Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. 24"
+                      placeholderTextColor="#6E7681"
+                      keyboardType="numeric"
+                      value={age}
+                      onChangeText={setAge}
+                    />
+                  </View>
+                </View>
+
+                {/* Gender & Address */}
+                <View style={styles.gridRow}>
+                  <View style={[styles.gridCol, { flex: 1 }]}>
+                    <Text style={styles.label}>GENDER</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Gender",
+                          options: [
+                            { label: "Male", value: "Male" },
+                            { label: "Female", value: "Female" },
+                            { label: "Other", value: "Other" },
+                          ],
+                          selectedValue: gender,
+                          onSelect: (val) => setGender(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{gender}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={[styles.gridCol, { flex: 2 }]}>
+                    <Text style={styles.label}>ADDRESS</Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. 123 Sports Street, Sector 5, Bangalore"
+                      placeholderTextColor="#6E7681"
+                      value={address}
+                      onChangeText={setAddress}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* SECTION 2: Sports & Batch Setup */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionIcon}>🏅</Text>
+                  <Text style={[styles.sectionTitle, { color: "#34D399" }]}>
+                    Sports & Batch Setup
+                  </Text>
+                </View>
+
+                {/* Admission Venue & Preferred Sport */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      ADMISSION VENUE <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Admission Venue",
+                          options: [
+                            { label: "OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)", value: "OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)" },
+                            { label: "Main Academy Sports Complex", value: "Main Academy Sports Complex" },
+                            { label: "Court 1 & 2 Center", value: "Court 1 & 2 Center" },
+                            { label: "East Wing Pavilion", value: "East Wing Pavilion" },
+                          ],
+                          selectedValue: venue,
+                          onSelect: (val) => setVenue(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue} numberOfLines={1}>
+                        {venue}
+                      </Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      PREFERRED SPORT <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Preferred Sport",
+                          options: (sports || []).map((s) => ({
+                            label: s.name.toUpperCase(),
+                            value: s.id,
+                          })),
+                          selectedValue: selectedSportId,
+                          onSelect: (val) => setSelectedSportId(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue} numberOfLines={1}>
+                        {(sports || []).find((s) => s.id === selectedSportId)?.name.toUpperCase() || "SELECT SPORT"}
+                      </Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Admission Date, Start Time, End Time */}
+                <View style={styles.gridRow}>
+                  <View style={[styles.gridCol, { flex: 1.2 }]}>
+                    <Text style={styles.label}>
+                      ADMISSION DATE <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <View style={styles.iconInputWrap}>
+                      <TextInput
+                        style={[styles.darkInput, { paddingRight: 32 }]}
+                        placeholder="12-Oct-2026"
+                        placeholderTextColor="#6E7681"
+                        value={admissionDate}
+                        onChangeText={setAdmissionDate}
+                      />
+                      <Text style={styles.inputInnerIcon}>📅</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.gridCol, { flex: 1 }]}>
+                    <Text style={styles.label}>BATCH START TIME</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Batch Start Time",
+                          options: ["06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM"].map((t) => ({ label: t, value: t })),
+                          selectedValue: startTime,
+                          onSelect: (val) => setStartTime(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{startTime}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={[styles.gridCol, { flex: 1 }]}>
+                    <Text style={styles.label}>BATCH END TIME</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Batch End Time",
+                          options: ["07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM", "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM"].map((t) => ({ label: t, value: t })),
+                          selectedValue: endTime,
+                          onSelect: (val) => setEndTime(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{endTime}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Sessions / Week */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>SESSIONS / WEEK</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Sessions / Week",
+                          options: [
+                            "Any / Not specified",
+                            "1 Day / Week",
+                            "2 Days / Week",
+                            "3 Days / Week",
+                            "4 Days / Week",
+                            "5 Days / Week",
+                            "6 Days / Week",
+                            "Daily (7 Days / Week)",
+                          ].map((s) => ({ label: s, value: s })),
+                          selectedValue: sessionsPerWeek,
+                          onSelect: (val) => setSessionsPerWeek(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{sessionsPerWeek}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Monthly Fee & Admission Fee */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      MONTHLY FEE <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <View style={styles.currencyInputWrap}>
+                      <Text style={styles.currencyPrefix}>₹</Text>
+                      <TextInput
+                        style={styles.currencyInput}
+                        placeholder="e.g. 3500"
+                        placeholderTextColor="#6E7681"
+                        keyboardType="numeric"
+                        value={monthlyFee}
+                        onChangeText={setMonthlyFee}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>ADMISSION FEE (ONE-TIME)</Text>
+                    <View style={styles.currencyInputWrap}>
+                      <Text style={styles.currencyPrefix}>₹</Text>
+                      <TextInput
+                        style={styles.currencyInput}
+                        placeholder="e.g. 1000"
+                        placeholderTextColor="#6E7681"
+                        keyboardType="numeric"
+                        value={admissionFee}
+                        onChangeText={setAdmissionFee}
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* SECTION 3: Coaching & Classification */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionIcon}>🔮</Text>
+                  <Text style={[styles.sectionTitle, { color: "#A78BFA" }]}>
+                    Coaching & Classification
+                  </Text>
+                </View>
+
+                {/* Coaching Type & Age Segment */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      COACHING TYPE <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Coaching Type",
+                          options: [
+                            "Group Coaching",
+                            "Personal / 1-on-1 Coaching",
+                            "Weekend Academy",
+                            "High Performance / Elite",
+                            "Specialized Training",
+                          ].map((c) => ({ label: c, value: c })),
+                          selectedValue: coachingType,
+                          onSelect: (val) => setCoachingType(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{coachingType}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      AGE SEGMENT <Text style={styles.subLabel}>(auto-derived from DOB)</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Age Segment",
+                          options: [
+                            "-- Select / Not set --",
+                            "Under-8 (U8)",
+                            "Under-10 (U10)",
+                            "Under-12 (U12)",
+                            "Under-14 (U14)",
+                            "Under-16 (U16)",
+                            "Under-19 (U19)",
+                            "Adults (19+)",
+                          ].map((a) => ({ label: a, value: a })),
+                          selectedValue: ageSegment,
+                          onSelect: (val) => setAgeSegment(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{ageSegment}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Training Group */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>TRAINING GROUP</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Training Group",
+                          options: [
+                            "-- Select group --",
+                            "Beginner / Grassroots",
+                            "Intermediate / Development",
+                            "Advanced / Competitive",
+                            "Elite Squad",
+                            "Morning Batch A",
+                            "Evening Batch B",
+                          ].map((g) => ({ label: g, value: g })),
+                          selectedValue: trainingGroup,
+                          onSelect: (val) => setTrainingGroup(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{trainingGroup}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              {/* SECTION 4: Guardian & Account Settings */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionIcon}>🛡️</Text>
+                  <Text style={[styles.sectionTitle, { color: "#FBBF24" }]}>
+                    Guardian & Account Settings
+                  </Text>
+                </View>
+
+                {/* Guardian Name & Phone */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>GUARDIAN'S NAME</Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. Ramesh Agarwal"
+                      placeholderTextColor="#6E7681"
+                      value={guardianName}
+                      onChangeText={setGuardianName}
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>GUARDIAN'S MOBILE NUMBER</Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. 9887766554"
+                      placeholderTextColor="#6E7681"
+                      keyboardType="phone-pad"
+                      value={guardianPhone}
+                      onChangeText={setGuardianPhone}
+                    />
+                  </View>
+                </View>
+
+                {/* ID Card Number & Copy Status */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>PIC ID / IDENTITY CARD NUMBER</Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="e.g. Aadhaar / Voter Card"
+                      placeholderTextColor="#6E7681"
+                      value={idCardNumber}
+                      onChangeText={setIdCardNumber}
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>COPY STATUS</Text>
+                    <TouchableOpacity
+                      style={styles.dropdownBtn}
+                      onPress={() =>
+                        setPickerConfig({
+                          title: "Select Copy Status",
+                          options: [
+                            "Approved",
+                            "Pending Verification",
+                            "Submitted",
+                            "Not Submitted",
+                          ].map((s) => ({ label: s, value: s })),
+                          selectedValue: copyStatus,
+                          onSelect: (val) => setCopyStatus(val),
+                        })
+                      }
+                    >
+                      <Text style={styles.dropdownValue}>{copyStatus}</Text>
+                      <Text style={styles.dropdownChevron}>▼</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Password & Photo Upload */}
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>
+                      TEMPORARY ACCOUNT PASSWORD <Text style={styles.reqStar}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.darkInput}
+                      placeholder="Welcome@123"
+                      placeholderTextColor="#6E7681"
+                      secureTextEntry={false}
+                      value={temporaryPassword}
+                      onChangeText={setTemporaryPassword}
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.label}>PHOTOGRAPH UPLOAD</Text>
+                    <View style={styles.photoUploadRow}>
+                      <View style={styles.avatarPlaceholder}>
+                        <Text style={{ fontSize: 20 }}>{hasPhotograph ? "📷" : "👤"}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.uploadBtn,
+                          hasPhotograph && styles.uploadBtnActive,
+                        ]}
+                        onPress={() => setHasPhotograph((prev) => !prev)}
+                      >
+                        <Text style={styles.uploadBtnText}>
+                          {hasPhotograph ? "✓ Photo Attached" : "⬆ Upload Photograph"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Bottom Actions */}
+              <View style={styles.modalActionsRow}>
                 <TouchableOpacity
-                  key={s.id}
+                  style={styles.cancelActionBtn}
+                  onPress={() => setIsAdmitModalVisible(false)}
+                >
+                  <Text style={styles.cancelActionText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.submitActionBtn}
+                  onPress={handleAdmit}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.submitActionText}>Submit Admission</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reusable Options Picker Modal */}
+      <Modal visible={!!pickerConfig} animationType="fade" transparent>
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerModalContent}>
+            <Text style={styles.pickerTitle}>{pickerConfig?.title}</Text>
+            <ScrollView style={{ maxHeight: 320 }}>
+              {(pickerConfig?.options || []).map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
                   style={[
-                    styles.sportPill,
-                    selectedSportId === s.id && styles.sportPillActive,
+                    styles.pickerOptionRow,
+                    pickerConfig?.selectedValue === opt.value && styles.pickerOptionActive,
                   ]}
-                  onPress={() => setSelectedSportId(s.id)}
+                  onPress={() => {
+                    pickerConfig?.onSelect(opt.value);
+                    setPickerConfig(null);
+                  }}
                 >
                   <Text
                     style={[
-                      styles.sportPillText,
-                      selectedSportId === s.id && styles.sportPillTextActive,
+                      styles.pickerOptionText,
+                      pickerConfig?.selectedValue === opt.value && styles.pickerOptionTextActive,
                     ]}
                   >
-                    {s.name}
+                    {opt.label}
                   </Text>
+                  {pickerConfig?.selectedValue === opt.value ? (
+                    <Text style={styles.pickerCheckmark}>✓</Text>
+                  ) : null}
                 </TouchableOpacity>
               ))}
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Guardian Full Name *"
-              placeholderTextColor={Colors.textSecondary}
-              value={guardianName}
-              onChangeText={setGuardianName}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Guardian Contact Phone *"
-              placeholderTextColor={Colors.textSecondary}
-              value={guardianPhone}
-              keyboardType="phone-pad"
-              onChangeText={setGuardianPhone}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Medical Notes / Allergies (Optional)"
-              placeholderTextColor={Colors.textSecondary}
-              value={medicalNotes}
-              onChangeText={setMedicalNotes}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setIsAdmitModalVisible(false)}
-              >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleAdmit}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator color={Colors.textLight} size="small" />
-                ) : (
-                  <Text style={styles.submitText}>Submit Admission</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.pickerCloseBtn}
+              onPress={() => setPickerConfig(null)}
+            >
+              <Text style={styles.pickerCloseText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -550,59 +1135,186 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: "center", marginTop: Spacing.xxl, padding: Spacing.xl },
   emptyTitle: { fontSize: Fonts.sizes.lg, fontWeight: "700", color: Colors.textPrimary },
   emptySubtitle: { fontSize: Fonts.sizes.md, color: Colors.textSecondary, textAlign: "center", marginTop: Spacing.xs },
+
+  // Dark modal container
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.75)",
     justifyContent: "center",
-    padding: Spacing.lg,
-  },
-  modalContent: {
-    backgroundColor: Colors.listBackground,
-    borderRadius: Radius.lg,
-    padding: Spacing.xl,
-  },
-  modalTitle: { fontSize: Fonts.sizes.xl, fontWeight: "800", color: Colors.textPrimary },
-  modalSubtitle: { fontSize: Fonts.sizes.xs, color: Colors.textSecondary, marginBottom: Spacing.md },
-  input: {
-    backgroundColor: Colors.screenBackground,
-    borderRadius: Radius.md,
+    alignItems: "center",
     padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    fontSize: Fonts.sizes.md,
-    color: Colors.textPrimary,
   },
-  rowInputs: { flexDirection: "row", gap: Spacing.sm, marginBottom: Spacing.sm },
-  halfInput: { flex: 1, marginBottom: 0 },
-  genderRow: { flexDirection: "row", gap: Spacing.xs },
-  genderBtn: {
-    flex: 1,
-    backgroundColor: Colors.screenBackground,
-    borderRadius: Radius.md,
+  modalContainer: {
+    backgroundColor: "#0D1117",
+    borderRadius: 16,
+    maxHeight: "94%",
+    width: "100%",
+    maxWidth: 680,
+    borderWidth: 1,
+    borderColor: "#30363D",
+    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#21262D",
+    backgroundColor: "#161B22",
+  },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#F0F6FC" },
+  modalSubtitle: { fontSize: 12, color: "#8B949E", marginTop: 2 },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#21262D",
     justifyContent: "center",
     alignItems: "center",
   },
-  genderBtnActive: { backgroundColor: Colors.primary },
-  genderText: { fontWeight: "700", color: Colors.textSecondary },
-  genderTextActive: { color: Colors.textLight },
-  fieldLabel: { fontSize: Fonts.sizes.xs, fontWeight: "700", color: Colors.textSecondary, marginBottom: 4 },
-  sportPills: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs, marginBottom: Spacing.md },
-  sportPill: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.screenBackground,
+  closeBtnText: { color: "#8B949E", fontSize: 14, fontWeight: "700" },
+  modalScroll: { flexGrow: 0 },
+  modalScrollContent: { padding: 16, gap: 16 },
+
+  // Section Card
+  sectionCard: {
+    backgroundColor: "#13171F",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#21262D",
+    gap: 12,
   },
-  sportPillActive: { backgroundColor: Colors.primaryLight },
-  sportPillText: { fontSize: Fonts.sizes.sm, color: Colors.textSecondary, fontWeight: "600" },
-  sportPillTextActive: { color: Colors.textLight },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: Spacing.md, marginTop: Spacing.md },
-  cancelBtn: { padding: Spacing.md },
-  cancelText: { color: Colors.textSecondary, fontWeight: "600" },
-  submitBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+  sectionHeaderRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  sectionIcon: { fontSize: 16 },
+  sectionTitle: { fontSize: 15, fontWeight: "700", letterSpacing: 0.3 },
+
+  gridRow: { flexDirection: "row", gap: 12 },
+  gridCol: { flex: 1 },
+  label: { fontSize: 11, fontWeight: "700", color: "#8B949E", marginBottom: 6, letterSpacing: 0.5 },
+  subLabel: { fontSize: 10, fontWeight: "400", color: "#6E7681" },
+  reqStar: { color: "#F85149" },
+
+  darkInput: {
+    backgroundColor: "#0A0E14",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#F0F6FC",
+    borderWidth: 1,
+    borderColor: "#262C36",
   },
-  submitText: { color: Colors.textLight, fontWeight: "700" },
+  iconInputWrap: { position: "relative", justifyContent: "center" },
+  inputInnerIcon: { position: "absolute", right: 10, fontSize: 14 },
+
+  dropdownBtn: {
+    backgroundColor: "#0A0E14",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: "#262C36",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  dropdownValue: { fontSize: 13, color: "#F0F6FC", flex: 1 },
+  dropdownChevron: { fontSize: 10, color: "#8B949E", marginLeft: 6 },
+
+  currencyInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0A0E14",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#262C36",
+    paddingHorizontal: 10,
+  },
+  currencyPrefix: { fontSize: 14, fontWeight: "700", color: "#8B949E", marginRight: 4 },
+  currencyInput: { flex: 1, paddingVertical: 10, fontSize: 14, color: "#F0F6FC" },
+
+  photoUploadRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  avatarPlaceholder: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: "#161B22",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#30363D",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadBtn: {
+    flex: 1,
+    backgroundColor: "#161B22",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#388BFD",
+    borderRadius: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  uploadBtnActive: { backgroundColor: "#0E4429", borderColor: "#34D399" },
+  uploadBtnText: { color: "#58A6FF", fontSize: 12, fontWeight: "700" },
+
+  modalActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  cancelActionBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#30363D",
+  },
+  cancelActionText: { color: "#8B949E", fontWeight: "600", fontSize: 14 },
+  submitActionBtn: {
+    backgroundColor: "#238636",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  submitActionText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
+
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  pickerModalContent: {
+    backgroundColor: "#161B22",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#30363D",
+    width: "100%",
+    maxWidth: 420,
+    padding: 16,
+  },
+  pickerTitle: { fontSize: 16, fontWeight: "700", color: "#F0F6FC", marginBottom: 12 },
+  pickerOptionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  pickerOptionActive: { backgroundColor: "#1F6FEB20" },
+  pickerOptionText: { fontSize: 14, color: "#C9D1D9" },
+  pickerOptionTextActive: { color: "#58A6FF", fontWeight: "700" },
+  pickerCheckmark: { color: "#58A6FF", fontWeight: "800", fontSize: 16 },
+  pickerCloseBtn: { marginTop: 12, alignItems: "center", paddingVertical: 10 },
+  pickerCloseText: { color: "#8B949E", fontWeight: "600", fontSize: 14 },
 });

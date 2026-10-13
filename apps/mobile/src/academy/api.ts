@@ -41,14 +41,65 @@ export interface AcademyPlayer {
   id: string;
   playerCode: string;
   fullName: string;
+  email?: string | null;
+  mobileNumber?: string | null;
   dateOfBirth: string;
+  age?: number | null;
   gender: string;
+  address?: string | null;
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED" | "GRADUATED";
   guardianName: string;
   guardianPhone: string;
+  idCardNumber?: string | null;
+  copyStatus?: string | null;
+  venue?: string | null;
+  sessionsPerWeek?: string | null;
+  monthlyFee?: number | null;
+  admissionFee?: number | null;
+  coachingType?: string | null;
+  ageSegment?: string | null;
+  trainingGroup?: string | null;
+  photoUrl?: string | null;
   medicalNotes?: string | null;
   primarySport?: { id: string; name: string } | null;
   createdAt?: string;
+}
+
+export interface PlayerAdmissionPayload {
+  // 1. Personal Profile Details
+  fullName: string;
+  email?: string;
+  mobileNumber?: string;
+  dateOfBirth: string;
+  age?: number;
+  gender?: string;
+  address?: string;
+
+  // 2. Sports & Batch Setup
+  venue?: string;
+  primarySportId: string;
+  primarySportName?: string;
+  admissionDate?: string;
+  joiningDate?: string;
+  startTime?: string;
+  endTime?: string;
+  sessionsPerWeek?: string;
+  monthlyFee?: number;
+  admissionFee?: number;
+
+  // 3. Coaching & Classification
+  coachingType?: string;
+  ageSegment?: string;
+  trainingGroup?: string;
+
+  // 4. Guardian & Account Settings
+  guardianName?: string;
+  guardianPhone?: string;
+  idCardNumber?: string;
+  copyStatus?: string;
+  temporaryPassword?: string;
+  photoUrl?: string;
+  medicalNotes?: string;
 }
 
 export interface AcademySport {
@@ -162,7 +213,7 @@ const MOCK_SPORTS: AcademySport[] = [
   { id: "sport-cricket", name: "Cricket", category: "TEAM", billingMethod: "SESSION_PACK", isActive: true },
 ];
 
-const MOCK_PLAYERS: AcademyPlayer[] = [
+export const MOCK_PLAYERS: AcademyPlayer[] = [
   {
     id: "ply-001",
     playerCode: "OFA-000001",
@@ -202,12 +253,12 @@ const MOCK_PLAYERS: AcademyPlayer[] = [
   },
 ];
 
-const MOCK_BATCHES: AcademyBatch[] = [
+export const MOCK_BATCHES: AcademyBatch[] = [
   { id: "batch-badm-adv", name: "Badminton Juniors Elite", sportId: "sport-badminton", sport: { id: "sport-badminton", name: "Badminton" }, capacity: 16 },
   { id: "batch-foot-u14", name: "Football Under-14 Squad", sportId: "sport-football", sport: { id: "sport-football", name: "Football" }, capacity: 22 },
 ];
 
-const MOCK_INVOICES: AcademyInvoice[] = [
+export const MOCK_INVOICES: AcademyInvoice[] = [
   {
     id: "inv-001",
     invoiceNumber: "INV-2026-001",
@@ -236,12 +287,12 @@ const MOCK_INVOICES: AcademyInvoice[] = [
   },
 ];
 
-const MOCK_FACILITIES: AcademyFacility[] = [
+export const MOCK_FACILITIES: AcademyFacility[] = [
   { id: "fac-badm-1", name: "Synthetic Court 1 & 2", sportType: "Badminton", courtCount: 2, isActive: true },
   { id: "fac-turf-a", name: "FIFA Approved 7v7 Turf", sportType: "Football", courtCount: 1, isActive: true },
 ];
 
-const MOCK_BOOKINGS: AcademyBooking[] = [
+export const MOCK_BOOKINGS: AcademyBooking[] = [
   {
     id: "bk-001",
     facilityId: "fac-badm-1",
@@ -431,39 +482,66 @@ export async function fetchPlayers(params?: {
   }
 }
 
-export async function admitPlayer(payload: {
-  fullName: string;
-  dateOfBirth: string;
-  gender: string;
-  primarySportId: string;
-  guardianName: string;
-  guardianPhone: string;
-  medicalNotes?: string;
-}): Promise<{ ok: boolean; player?: AcademyPlayer; error?: string }> {
+export async function admitPlayer(
+  payload: PlayerAdmissionPayload
+): Promise<{ ok: boolean; player?: AcademyPlayer; error?: string }> {
+  const joiningDate = payload.admissionDate || payload.joiningDate || new Date().toISOString().slice(0, 10);
   if (!userToken) {
     const fallbackPlayer: AcademyPlayer = {
       id: `ply-mock-${Date.now()}`,
       playerCode: `OFA-${Math.floor(100000 + Math.random() * 900000)}`,
       fullName: payload.fullName,
+      email: payload.email,
+      mobileNumber: payload.mobileNumber,
       dateOfBirth: payload.dateOfBirth,
-      gender: payload.gender,
+      age: payload.age,
+      gender: payload.gender || "Male",
+      address: payload.address,
       status: "ACTIVE",
-      guardianName: payload.guardianName,
-      guardianPhone: payload.guardianPhone,
+      guardianName: payload.guardianName || "N/A",
+      guardianPhone: payload.guardianPhone || "N/A",
+      idCardNumber: payload.idCardNumber,
+      copyStatus: payload.copyStatus,
+      venue: payload.venue,
+      sessionsPerWeek: payload.sessionsPerWeek,
+      monthlyFee: payload.monthlyFee,
+      admissionFee: payload.admissionFee,
+      coachingType: payload.coachingType,
+      ageSegment: payload.ageSegment,
+      trainingGroup: payload.trainingGroup,
+      photoUrl: payload.photoUrl,
       medicalNotes: payload.medicalNotes,
-      primarySport: { id: payload.primarySportId, name: "Selected Sport" },
+      primarySport: { id: payload.primarySportId, name: payload.primarySportName || "Selected Sport" },
+      createdAt: joiningDate,
     };
     return { ok: true, player: fallbackPlayer };
   }
   try {
     const backendBody = {
       name: payload.fullName,
+      email: payload.email,
+      mobileNumber: payload.mobileNumber,
       dateOfBirth: payload.dateOfBirth,
-      guardianName: payload.guardianName,
-      guardianPhone: payload.guardianPhone,
-      sportIds: [payload.primarySportId],
+      age: payload.age,
       gender: payload.gender,
+      address: payload.address,
+      guardianName: payload.guardianName || "Self",
+      guardianPhone: payload.guardianPhone || payload.mobileNumber || "+91 9999999999",
+      joiningDate,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      sportIds: [payload.primarySportId],
       status: "ACTIVE",
+      venue: payload.venue,
+      sessionsPerWeek: payload.sessionsPerWeek,
+      monthlyFee: payload.monthlyFee,
+      admissionFee: payload.admissionFee,
+      coachingType: payload.coachingType,
+      ageSegment: payload.ageSegment,
+      trainingGroup: payload.trainingGroup,
+      idCardNumber: payload.idCardNumber,
+      copyStatus: payload.copyStatus,
+      temporaryPassword: payload.temporaryPassword,
     };
 
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/players`, {
@@ -482,13 +560,22 @@ export async function admitPlayer(payload: {
       id: json.data.id,
       playerCode: json.data.playerCode || "OFA-*",
       fullName: payload.fullName,
+      email: payload.email,
+      mobileNumber: payload.mobileNumber,
       dateOfBirth: payload.dateOfBirth,
-      gender: payload.gender,
+      age: payload.age,
+      gender: payload.gender || "Male",
+      address: payload.address,
       status: "ACTIVE",
-      guardianName: payload.guardianName,
-      guardianPhone: payload.guardianPhone,
+      guardianName: payload.guardianName || "Guardian",
+      guardianPhone: payload.guardianPhone || "",
+      venue: payload.venue,
+      coachingType: payload.coachingType,
+      ageSegment: payload.ageSegment,
+      trainingGroup: payload.trainingGroup,
       medicalNotes: payload.medicalNotes,
-      primarySport: { id: payload.primarySportId, name: "Selected Sport" },
+      primarySport: { id: payload.primarySportId, name: payload.primarySportName || "Selected Sport" },
+      createdAt: joiningDate,
     };
     return { ok: true, player: created };
   } catch (err: unknown) {
@@ -703,16 +790,28 @@ export async function recordPayment(payload: {
   paymentMethod: string;
   reference?: string;
   notes?: string;
+  paidAt?: string;
 }): Promise<{ ok: boolean; receiptNumber?: string; error?: string }> {
   if (!userToken) return { ok: true, receiptNumber: `RCP-MOCK-${Date.now()}` };
   try {
+    const backendBody = {
+      playerId: payload.playerId,
+      amount: payload.amountCents / 100,
+      amountCents: payload.amountCents,
+      method: payload.paymentMethod,
+      paymentMethod: payload.paymentMethod,
+      reference: payload.reference,
+      notes: payload.notes,
+      paidAt: payload.paidAt || new Date().toISOString().slice(0, 10),
+    };
+
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/finance/payments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${userToken}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(backendBody),
     });
     const json = (await res.json()) as any;
     if (!json.ok || !json.data) {

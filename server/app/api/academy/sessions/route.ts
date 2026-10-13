@@ -205,6 +205,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Mode 2: Generate sessions over date range
+    if (!body?.fromDate && !body?.toDate) {
+      return academyError(
+        400,
+        "VALIDATION_ERROR",
+        "Either session 'date' (for single session) or 'fromDate' and 'toDate' range is required"
+      );
+    }
     const fromParsed = parseDateOnly(body.fromDate, "fromDate");
     const toParsed = parseDateOnly(body.toDate, "toDate");
     if (!fromParsed.ok) return academyError(400, "VALIDATION_ERROR", fromParsed.message);

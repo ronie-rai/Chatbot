@@ -1,7 +1,7 @@
 export type RootStackParamList = {
   Login: undefined;
   ConversationList: undefined;
-  Dashboard: undefined;
+  Dashboard: { initialTab?: string } | undefined;
   Admin: undefined;
   Academy: undefined;
   AcademyPlayers: { initialTab?: "players" | "sports" } | undefined;

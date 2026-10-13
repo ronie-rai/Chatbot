@@ -43,11 +43,26 @@ test("valid player parses, trims, normalizes phone and de-dupes sports", () => {
 });
 
 test("missing essential fields are rejected", () => {
-  for (const key of ["name", "dateOfBirth", "guardianName", "guardianPhone", "joiningDate", "sportIds"]) {
+  for (const key of ["name", "dateOfBirth", "guardianName", "guardianPhone", "sportIds"]) {
     const bad: Record<string, unknown> = { ...valid };
     delete bad[key];
     assert.equal(parsePlayerInput(bad).ok, false, `${key} should be required`);
   }
+});
+
+test("omitted joiningDate defaults to today", () => {
+  const bad: Record<string, unknown> = { ...valid };
+  delete bad["joiningDate"];
+  const fixedNow = new Date("2026-10-12T08:00:00.000Z");
+  const r = parsePlayerInput(bad, fixedNow);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.joiningDate, "2026-10-12");
+  }
+});
+
+test("invalid joiningDate is rejected", () => {
+  assert.equal(parsePlayerInput({ ...valid, joiningDate: "bad-date" }).ok, false);
 });
 
 test("empty sports list rejected", () => {
@@ -66,10 +81,17 @@ test("invalid status rejected", () => {
   assert.equal(parsePlayerInput({ ...valid, status: "GONE" }).ok, false);
 });
 
-test("date validation rejects impossible dates", () => {
+test("date validation rejects impossible dates and accepts ISO strings and Date instances", () => {
   assert.equal(parseDateOnly("2026-02-30", "d").ok, false);
   assert.equal(parseDateOnly("20-02-2026", "d").ok, false);
   assert.equal(parseDateOnly("2026-02-28", "d").ok, true);
+  assert.equal(parseDateOnly(" 2026-02-28 ", "d").ok, true);
+  const iso = parseDateOnly("2026-02-28T10:30:00.000Z", "d");
+  assert.equal(iso.ok, true);
+  if (iso.ok) assert.equal(iso.value, "2026-02-28");
+  const dateObj = parseDateOnly(new Date("2026-02-28T00:00:00.000Z"), "d");
+  assert.equal(dateObj.ok, true);
+  if (dateObj.ok) assert.equal(dateObj.value, "2026-02-28");
 });
 
 test("time validation", () => {

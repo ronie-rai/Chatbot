@@ -28,26 +28,60 @@ export function str(v: unknown, field: string, max = 200, required = true): Pars
   return ok(t);
 }
 
-/** Strict YYYY-MM-DD that is a real calendar date. Returns the same string. */
+/** Strict YYYY-MM-DD that is a real calendar date. Accepts string, ISO string, or Date instance. Returns YYYY-MM-DD string. */
 export function parseDateOnly(v: unknown, field: string): Parsed<string> {
-  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+  if (v === undefined || v === null || v === "") {
     return fail(`${field} must be a date in YYYY-MM-DD format`);
   }
-  const d = new Date(`${v}T00:00:00.000Z`);
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) {
+
+  let strVal: string;
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) {
+      return fail(`${field} is not a valid date`);
+    }
+    return ok(v.toISOString().slice(0, 10));
+  } else if (typeof v === "string") {
+    strVal = v.trim();
+  } else {
+    return fail(`${field} must be a date in YYYY-MM-DD format`);
+  }
+
+  // If passed an ISO-8601 string like "2026-10-12T14:30:00.000Z", extract date portion
+  if (/^\d{4}-\d{2}-\d{2}T/.test(strVal)) {
+    strVal = strVal.slice(0, 10);
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(strVal)) {
+    return fail(`${field} must be a date in YYYY-MM-DD format`);
+  }
+
+  const d = new Date(`${strVal}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== strVal) {
     return fail(`${field} is not a valid date`);
   }
-  return ok(v);
+  return ok(strVal);
 }
 
 export function parseTime(v: unknown, field: string, required = false): Parsed<string | null> {
   if (v === undefined || v === null || v === "") {
     return required ? fail(`${field} is required`) : ok(null);
   }
-  if (typeof v !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) {
+  if (typeof v !== "string") return fail(`${field} must be HH:MM (24h)`);
+  let t = v.trim();
+  // Support 12-hour AM/PM times (e.g. "06:00 AM", "07:30 PM")
+  const m12 = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let hours = parseInt(m12[1], 10);
+    const minutes = m12[2];
+    const isPM = m12[3].toUpperCase() === "PM";
+    if (isPM && hours < 12) hours += 12;
+    if (!isPM && hours === 12) hours = 0;
+    t = `${String(hours).padStart(2, "0")}:${minutes}`;
+  }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) {
     return fail(`${field} must be HH:MM (24h)`);
   }
-  return ok(v);
+  return ok(t);
 }
 
 /** Keep digits and a leading +; accept 7–15 digits (E.164 length range). */
@@ -104,7 +138,11 @@ export function parseSportInput(body: unknown, partial = false): Parsed<Partial<
 
 export interface PlayerInput {
   name: string;
+  email?: string | null;
+  mobileNumber?: string | null;
   dateOfBirth: string;
+  age?: number | null;
+  gender?: string | null;
   guardianName: string;
   guardianPhone: string;
   address: string | null;
@@ -113,26 +151,49 @@ export interface PlayerInput {
   endTime: string | null;
   status: PlayerStatus;
   sportIds: string[];
+  venue?: string | null;
+  sessionsPerWeek?: string | null;
+  monthlyFee?: number | null;
+  admissionFee?: number | null;
+  coachingType?: string | null;
+  ageSegment?: string | null;
+  trainingGroup?: string | null;
+  idCardNumber?: string | null;
+  copyStatus?: string | null;
+  temporaryPassword?: string | null;
+  photoUrl?: string | null;
 }
 
 export function parsePlayerInput(body: unknown, now: Date = new Date()): Parsed<PlayerInput> {
   if (!isObj(body)) return fail("Invalid body");
 
-  const name = str(body.name, "Player name", 120);
+  const rawName = (body as any).name ?? (body as any).fullName;
+  const name = str(rawName, "Player name", 120);
   if (!name.ok) return name;
   const dob = parseDateOnly(body.dateOfBirth, "Date of birth");
   if (!dob.ok) return dob;
   if (new Date(`${dob.value}T00:00:00.000Z`).getTime() > now.getTime()) {
     return fail("Date of birth cannot be in the future");
   }
-  const guardianName = str(body.guardianName, "Guardian name", 120);
+
+  const guardianName = str((body as any).guardianName, "Guardian name", 120);
   if (!guardianName.ok) return guardianName;
-  const phone = normalizePhone(body.guardianPhone, "Guardian number");
+
+  const phone = normalizePhone((body as any).guardianPhone, "Guardian number");
   if (!phone.ok) return phone;
+
   const address = str(body.address, "Residential address", 500, false);
   if (!address.ok) return address;
-  const joining = parseDateOnly(body.joiningDate, "Joining date");
+
+  // Gracefully default joiningDate / admissionDate to today if omitted or empty
+  const rawJoining = (body as any).joiningDate ?? (body as any).admissionDate;
+  const todayStr = now.toISOString().slice(0, 10);
+  const joining =
+    rawJoining !== undefined && rawJoining !== null && rawJoining !== ""
+      ? parseDateOnly(rawJoining, "Joining date")
+      : ok(todayStr);
   if (!joining.ok) return joining;
+
   const start = parseTime(body.startTime, "Start time");
   if (!start.ok) return start;
   const end = parseTime(body.endTime, "End time");
@@ -143,7 +204,7 @@ export function parsePlayerInput(body: unknown, now: Date = new Date()): Parsed<
 
   let status: PlayerStatus = "ACTIVE";
   if (body.status !== undefined) {
-    if (!(PLAYER_STATUSES as readonly unknown[]).includes(body.status)) {
+    if (!(PLAYER_STATUSES as readonly unknown[]).includes(body.status as PlayerStatus)) {
       return fail(`Status must be one of ${PLAYER_STATUSES.join(", ")}`);
     }
     status = body.status as PlayerStatus;
@@ -159,7 +220,11 @@ export function parsePlayerInput(body: unknown, now: Date = new Date()): Parsed<
 
   return ok({
     name: name.value as string,
+    email: typeof (body as any).email === "string" ? (body as any).email.trim() : null,
+    mobileNumber: typeof (body as any).mobileNumber === "string" ? (body as any).mobileNumber.trim() : null,
     dateOfBirth: dob.value,
+    age: typeof (body as any).age === "number" ? (body as any).age : (Number((body as any).age) || null),
+    gender: typeof (body as any).gender === "string" ? (body as any).gender.trim() : null,
     guardianName: guardianName.value as string,
     guardianPhone: phone.value,
     address: address.value,
@@ -168,6 +233,17 @@ export function parsePlayerInput(body: unknown, now: Date = new Date()): Parsed<
     endTime: end.value,
     status,
     sportIds,
+    venue: typeof (body as any).venue === "string" ? (body as any).venue.trim() : null,
+    sessionsPerWeek: typeof (body as any).sessionsPerWeek === "string" ? (body as any).sessionsPerWeek.trim() : null,
+    monthlyFee: typeof (body as any).monthlyFee === "number" ? (body as any).monthlyFee : (Number((body as any).monthlyFee) || null),
+    admissionFee: typeof (body as any).admissionFee === "number" ? (body as any).admissionFee : (Number((body as any).admissionFee) || null),
+    coachingType: typeof (body as any).coachingType === "string" ? (body as any).coachingType.trim() : null,
+    ageSegment: typeof (body as any).ageSegment === "string" ? (body as any).ageSegment.trim() : null,
+    trainingGroup: typeof (body as any).trainingGroup === "string" ? (body as any).trainingGroup.trim() : null,
+    idCardNumber: typeof (body as any).idCardNumber === "string" ? (body as any).idCardNumber.trim() : null,
+    copyStatus: typeof (body as any).copyStatus === "string" ? (body as any).copyStatus.trim() : null,
+    temporaryPassword: typeof (body as any).temporaryPassword === "string" ? (body as any).temporaryPassword.trim() : null,
+    photoUrl: typeof (body as any).photoUrl === "string" ? (body as any).photoUrl.trim() : null,
   });
 }
 
@@ -432,7 +508,10 @@ export interface ParsedPlayerFeeAssignmentInput {
   discountReason: string | null;
 }
 
-export function parsePlayerFeeAssignmentInput(body: unknown): Parsed<ParsedPlayerFeeAssignmentInput> {
+export function parsePlayerFeeAssignmentInput(
+  body: unknown,
+  now: Date = new Date()
+): Parsed<ParsedPlayerFeeAssignmentInput> {
   if (!isObj(body)) return fail("Request body must be a JSON object");
 
   const playerId = str(body.playerId, "Player ID", 100, true);
@@ -441,7 +520,12 @@ export function parsePlayerFeeAssignmentInput(body: unknown): Parsed<ParsedPlaye
   const feePlanId = str(body.feePlanId, "Fee plan ID", 100, true);
   if (!feePlanId.ok) return feePlanId;
 
-  const from = parseDateOnly(body.effectiveFrom, "Effective from date");
+  // Default effectiveFrom to today if omitted or empty
+  const todayStr = now.toISOString().slice(0, 10);
+  const from =
+    body.effectiveFrom !== undefined && body.effectiveFrom !== null && body.effectiveFrom !== ""
+      ? parseDateOnly(body.effectiveFrom, "Effective from date")
+      : ok(todayStr);
   if (!from.ok) return from;
 
   let to: string | null = null;
@@ -486,20 +570,31 @@ export interface ParsedPaymentInput {
   paidAt: string | null;
 }
 
-export function parsePaymentInput(body: unknown): Parsed<ParsedPaymentInput> {
+export function parsePaymentInput(
+  body: unknown,
+  now: Date = new Date()
+): Parsed<ParsedPaymentInput> {
   if (!isObj(body)) return fail("Request body must be a JSON object");
 
   const playerId = str(body.playerId, "Player ID", 100, true);
   if (!playerId.ok) return playerId;
 
-  const amount = Number(body.amount);
+  // Support both amount (in currency units/rupees) and amountCents (mobile pattern)
+  let amount = 0;
+  if (body.amount !== undefined && body.amount !== null && body.amount !== "") {
+    amount = Number(body.amount);
+  } else if (body.amountCents !== undefined && body.amountCents !== null && body.amountCents !== "") {
+    amount = Number(body.amountCents) / 100;
+  }
   if (!Number.isFinite(amount) || amount <= 0) {
     return fail("amount must be a positive number");
   }
 
+  // Support both method and paymentMethod
+  const rawMethod = (body.method ?? body.paymentMethod);
   if (
-    typeof body.method !== "string" ||
-    !(PAYMENT_METHODS as readonly string[]).includes(body.method)
+    typeof rawMethod !== "string" ||
+    !(PAYMENT_METHODS as readonly string[]).includes(rawMethod as PaymentMethod)
   ) {
     return fail(`method must be one of: ${PAYMENT_METHODS.join(", ")}`);
   }
@@ -514,16 +609,18 @@ export function parsePaymentInput(body: unknown): Parsed<ParsedPaymentInput> {
   if (!notes.ok) return notes;
 
   let paidAt: string | null = null;
-  if (body.paidAt) {
+  if (body.paidAt !== undefined && body.paidAt !== null && body.paidAt !== "") {
     const p = parseDateOnly(body.paidAt, "Paid date");
     if (!p.ok) return p;
     paidAt = p.value;
+  } else {
+    paidAt = now.toISOString().slice(0, 10);
   }
 
   return ok({
     playerId: playerId.value!,
     amount,
-    method: body.method as PaymentMethod,
+    method: rawMethod as PaymentMethod,
     reference: reference.value,
     invoiceId: invoiceId.value,
     notes: notes.value,
@@ -588,18 +685,22 @@ export function parseBookingInput(body: unknown): Parsed<ParsedBookingInput> {
   const title = str(body.title, "Booking title", 100, false);
   if (!title.ok) return title;
 
-  if (typeof body.startAt !== "string" || !body.startAt) {
+  // Support both startAt and startTime
+  const rawStart = (body as any).startAt ?? (body as any).startTime;
+  if (typeof rawStart !== "string" || !rawStart) {
     return fail("startAt timestamp is required");
   }
-  const sDate = new Date(body.startAt);
+  const sDate = new Date(rawStart);
   if (Number.isNaN(sDate.getTime())) {
     return fail("startAt must be a valid ISO date/time");
   }
 
-  if (typeof body.endAt !== "string" || !body.endAt) {
+  // Support both endAt and endTime
+  const rawEnd = (body as any).endAt ?? (body as any).endTime;
+  if (typeof rawEnd !== "string" || !rawEnd) {
     return fail("endAt timestamp is required");
   }
-  const eDate = new Date(body.endAt);
+  const eDate = new Date(rawEnd);
   if (Number.isNaN(eDate.getTime())) {
     return fail("endAt must be a valid ISO date/time");
   }
@@ -726,7 +827,7 @@ export interface ParsedAssessmentInput {
   results: ParsedAssessmentResultInput[];
 }
 
-export function parseAssessmentInput(body: unknown): Parsed<ParsedAssessmentInput> {
+export function parseAssessmentInput(body: unknown, now: Date = new Date()): Parsed<ParsedAssessmentInput> {
   if (!isObj(body)) return fail("Request body must be a JSON object");
 
   const templateId = str(body.templateId, "Template ID", 100, true);
@@ -735,7 +836,12 @@ export function parseAssessmentInput(body: unknown): Parsed<ParsedAssessmentInpu
   const batchId = str(body.batchId, "Batch ID", 100, false);
   if (!batchId.ok) return batchId;
 
-  const dateParsed = parseDateOnly(body.assessedDate, "Assessed date");
+  // Default assessedDate to today if omitted or empty
+  const todayStr = now.toISOString().slice(0, 10);
+  const dateParsed =
+    (body as any).assessedDate !== undefined && (body as any).assessedDate !== null && (body as any).assessedDate !== ""
+      ? parseDateOnly((body as any).assessedDate, "Assessed date")
+      : ok(todayStr);
   if (!dateParsed.ok) return dateParsed;
 
   const notes = str(body.notes, "Notes", 500, false);

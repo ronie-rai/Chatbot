@@ -9,7 +9,24 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "jest --passWithNoTests",
+    "test:coverage": "jest --coverage --passWithNoTests",
+    "test:watch": "jest --watch"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.ts",
+      "**/__tests__/**/*.test.tsx"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(jest-)?react-native|@react-native|expo|@expo|@unimodules|unimodules|sentry-expo|native-base|react-navigation|@react-navigation|@testing-library)"
+    ],
+    "moduleNameMapper": {
+      "^@chatbot/shared-types(.*)$": "<rootDir>/../../packages/shared-types/src$1"
+    }
   },
   "dependencies": {
     "@chatbot/shared-types": "workspace:*",
@@ -34,7 +51,13 @@
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^14.1.0",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
+    "babel-jest": "^30.5.2",
+    "jest": "^30.5.2",
+    "jest-expo": "^57.0.5",
     "typescript": "~6.0.3"
   }
 }

@@ -95,7 +95,7 @@ export function LoginScreen({ navigation }: Props) {
         });
       }
 
-      navigation.replace("ConversationList");
+      navigation.replace("Dashboard");
     } catch {
       // ── Server unreachable (standalone mobile APK / offline mode) ──────────
       // Strictly validate against configured credentials — do not allow arbitrary passwords!
@@ -107,10 +107,10 @@ export function LoginScreen({ navigation }: Props) {
       if (isAdminMatch) {
         setAdminToken("offline-sa-token");
         setCurrentUser(MOCK_ADMIN_USER);
-        navigation.replace("ConversationList");
+        navigation.replace("Dashboard");
       } else if (isDemoMatch) {
         setCurrentUser(MOCK_DEMO_USER);
-        navigation.replace("ConversationList");
+        navigation.replace("Dashboard");
       } else {
         Alert.alert(
           "Sign In Failed",
