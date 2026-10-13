@@ -1025,6 +1025,10 @@ export async function createBooking(payload: {
       title: payload.title,
       startAt: payload.startTime,
       endAt: payload.endTime,
+      bookedBy: payload.bookedBy,
+      customerName: payload.bookedBy,
+      contactPhone: payload.contactPhone,
+      totalAmountCents: payload.totalAmountCents,
       notes: payload.bookedBy ? `Booked by ${payload.bookedBy}` : undefined,
     };
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/bookings`, {

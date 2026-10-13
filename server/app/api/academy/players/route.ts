@@ -4,6 +4,7 @@ import { requireAcademy, academyError } from "@/lib/academy/auth";
 import { recordAudit } from "@/lib/academy/audit";
 import { formatPlayerCode, parseLimit, parsePlayerInput, PLAYER_STATUSES } from "@/lib/academy/validation";
 import { prisma } from "@/lib/prisma";
+import { syncPlayerAdmissionToSheet } from "@/lib/sheetsSync";
 
 export const dynamic = "force-dynamic";
 
@@ -250,6 +251,22 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
       { timeout: 30000, maxWait: 20000 }
     );
+
+    // Non-blocking fire-and-forget sync to Google Sheet (Admissions tab)
+    syncPlayerAdmissionToSheet(created.id, ctx.tenantId, {
+      primarySportName: existingSports.find((s) => resolvedSportIds.includes(s.id))?.name,
+      venue: (body as any)?.venue || "OFA-1",
+      mobileNumber: (body as any)?.mobileNumber || v.guardianPhone,
+      age: (body as any)?.age,
+      gender: (body as any)?.gender,
+      admissionFee: (body as any)?.admissionFee,
+      monthlyFee: (body as any)?.monthlyFee,
+      coachingType: (body as any)?.coachingType,
+      ageSegment: (body as any)?.ageSegment,
+      trainingGroup: (body as any)?.trainingGroup,
+      idCardNumber: (body as any)?.idCardNumber,
+      photoUrl: v.photoUrl || (body as any)?.photoKey,
+    }).catch((err) => console.error("[sheets-sync] Failed to sync player admission:", err));
 
     return NextResponse.json(
       { ok: true, data: { id: created.id, playerCode: created.playerCode } },

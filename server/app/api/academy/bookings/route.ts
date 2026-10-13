@@ -4,6 +4,7 @@ import { requireAcademy, academyError } from "@/lib/academy/auth";
 import { recordAudit } from "@/lib/academy/audit";
 import { parseBookingInput, parseLimit, BOOKING_STATUSES } from "@/lib/academy/validation";
 import { prisma } from "@/lib/prisma";
+import { syncBookingToSheet } from "@/lib/sheetsSync";
 
 export const dynamic = "force-dynamic";
 
@@ -156,6 +157,16 @@ export async function POST(request: Request): Promise<NextResponse> {
 
       return b;
     });
+
+    // Non-blocking fire-and-forget sync to Google Sheet (Bookings tab)
+    syncBookingToSheet(booking.id, ctx.tenantId, {
+      facilityName: facility.name,
+      customerName: (body as any)?.bookedBy || (body as any)?.customerName,
+      contactPhone: (body as any)?.contactPhone || (body as any)?.phone,
+      consumables: (body as any)?.consumables || (body as any)?.consumablesSummary,
+      totalAmountCents: (body as any)?.totalAmountCents,
+      totalAmount: (body as any)?.totalAmount,
+    }).catch((err) => console.error("[sheets-sync] Failed to sync booking:", err));
 
     return NextResponse.json({
       ok: true,

@@ -9,6 +9,7 @@ import {
   str,
 } from "@/lib/academy/validation";
 import { prisma } from "@/lib/prisma";
+import { syncAttendanceRecordsToSheet } from "@/lib/sheetsSync";
 
 export const dynamic = "force-dynamic";
 
@@ -237,6 +238,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
       return results;
     }, { timeout: 30000, maxWait: 20000 });
+
+    // Non-blocking fire-and-forget sync to Google Sheet (Attendance tab)
+    syncAttendanceRecordsToSheet(saved, ctx.tenantId, {
+      sessionName: session.batch.name,
+      date: session.date.toISOString().slice(0, 10),
+      markedBy: "Coach",
+    }).catch((err) => console.error("[sheets-sync] Failed to sync attendance:", err));
 
     return NextResponse.json({
       ok: true,

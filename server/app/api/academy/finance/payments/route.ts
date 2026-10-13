@@ -4,6 +4,7 @@ import { requireAcademy, academyError } from "@/lib/academy/auth";
 import { recordAudit } from "@/lib/academy/audit";
 import { parsePaymentInput, parseLimit } from "@/lib/academy/validation";
 import { prisma } from "@/lib/prisma";
+import { syncPaymentToSheet } from "@/lib/sheetsSync";
 
 export const dynamic = "force-dynamic";
 
@@ -109,7 +110,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const player = await prisma.academyPlayer.findFirst({
       where: { id: v.playerId, tenantId: ctx.tenantId, archivedAt: null },
-      select: { id: true, name: true, playerCode: true },
+      select: { id: true, name: true, playerCode: true, guardianPhone: true },
     });
     if (!player) return academyError(404, "NOT_FOUND", "Player not found");
 
@@ -220,6 +221,14 @@ export async function POST(request: Request): Promise<NextResponse> {
 
       return { payment, allocations: createdAllocations, receipt };
     });
+
+    // Non-blocking fire-and-forget sync to Google Sheet (Payments tab)
+    syncPaymentToSheet(result.payment.id, ctx.tenantId, {
+      playerName: player.name,
+      playerCode: player.playerCode,
+      mobile: player.guardianPhone,
+      receiptNumber: result.receipt?.id,
+    }).catch((err) => console.error("[sheets-sync] Failed to sync payment:", err));
 
     return NextResponse.json({
       ok: true,
