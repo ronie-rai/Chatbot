@@ -15,6 +15,108 @@ export function getAcademyToken(): string | null {
   return userToken;
 }
 
+/** Normalize any incoming date string (e.g. "12-Oct-2026", "13/10/2026", "13-10-2026", ISO) into strict YYYY-MM-DD format */
+export function normalizeToYyyyMmDd(val: unknown, fallback?: string): string {
+  const defaultFallback = fallback || new Date().toISOString().slice(0, 10);
+  if (!val) return defaultFallback;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? defaultFallback : val.toISOString().slice(0, 10);
+  }
+  const s = String(val).trim();
+  if (!s) return defaultFallback;
+
+  // 1. Matches pure YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // 2. Matches ISO string like 2026-10-13T...
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+
+  // 3. Matches DD-Mon-YYYY or DD Mon YYYY (e.g. 12-Oct-2026, 12-October-2026, 13 Oct 2026)
+  const dMonY = s.match(/^(\d{1,2})[-/\s]([a-zA-Z]+)[-/\s](\d{4})$/);
+  if (dMonY) {
+    const day = dMonY[1].padStart(2, "0");
+    const mStr = dMonY[2].toLowerCase();
+    const monthNames: Record<string, string> = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+      january: "01", february: "02", march: "03", april: "04", june: "06",
+      july: "07", august: "08", september: "09", october: "10", november: "11", december: "12",
+    };
+    const month = monthNames[mStr.slice(0, 3)] || monthNames[mStr];
+    if (month) return `${dMonY[3]}-${month}-${day}`;
+  }
+
+  // 4. Matches DD-MM-YYYY or DD/MM/YYYY
+  const ddmmyyyy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (ddmmyyyy) {
+    const day = ddmmyyyy[1].padStart(2, "0");
+    const month = ddmmyyyy[2].padStart(2, "0");
+    const year = ddmmyyyy[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // 5. Matches YYYY/MM/DD
+  const yyyymmdd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (yyyymmdd) {
+    const year = yyyymmdd[1];
+    const month = yyyymmdd[2].padStart(2, "0");
+    const day = yyyymmdd[3].padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  // 6. Generic JS Date parse attempt
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return defaultFallback;
+}
+
+/** Upload photo to /api/upload with offline & demo fallback */
+export async function uploadPhoto(asset: {
+  uri: string;
+  base64?: string;
+  name?: string;
+  type?: string;
+}): Promise<{ ok: boolean; url?: string; error?: string }> {
+  if (!asset.uri && !asset.base64) {
+    return { ok: false, error: "No image file provided" };
+  }
+  if (!userToken) {
+    // Offline / demo fallback: return base64 data URI or local URI
+    const offlineUrl = asset.base64
+      ? `data:${asset.type || "image/jpeg"};base64,${asset.base64}`
+      : asset.uri;
+    return { ok: true, url: offlineUrl };
+  }
+  try {
+    const res = await fetch(`${getEffectiveBaseUrl()}/api/upload`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${userToken}`,
+      },
+      body: JSON.stringify({
+        base64: asset.base64,
+        name: asset.name || `photo_${Date.now()}.jpg`,
+        type: asset.type || "image/jpeg",
+      }),
+    });
+    const json = (await res.json()) as any;
+    if (json.ok && json.data?.url) {
+      const fullUrl = json.data.url.startsWith("http")
+        ? json.data.url
+        : `${getEffectiveBaseUrl()}${json.data.url}`;
+      return { ok: true, url: fullUrl };
+    }
+    // Fallback to local URI so UI still displays photo
+    return { ok: true, url: asset.uri };
+  } catch {
+    return { ok: true, url: asset.uri };
+  }
+}
+
 export type AcademyRole = "OWNER" | "MANAGER" | "COACH" | "ACCOUNTS" | "RECEPTION" | "GUARDIAN";
 
 export interface AcademyNavModule {
@@ -485,7 +587,8 @@ export async function fetchPlayers(params?: {
 export async function admitPlayer(
   payload: PlayerAdmissionPayload
 ): Promise<{ ok: boolean; player?: AcademyPlayer; error?: string }> {
-  const joiningDate = payload.admissionDate || payload.joiningDate || new Date().toISOString().slice(0, 10);
+  const joiningDate = normalizeToYyyyMmDd(payload.admissionDate || payload.joiningDate);
+  const normalizedDob = normalizeToYyyyMmDd(payload.dateOfBirth, "2002-01-01");
   if (!userToken) {
     const fallbackPlayer: AcademyPlayer = {
       id: `ply-mock-${Date.now()}`,
@@ -493,7 +596,7 @@ export async function admitPlayer(
       fullName: payload.fullName,
       email: payload.email,
       mobileNumber: payload.mobileNumber,
-      dateOfBirth: payload.dateOfBirth,
+      dateOfBirth: normalizedDob,
       age: payload.age,
       gender: payload.gender || "Male",
       address: payload.address,
@@ -521,7 +624,7 @@ export async function admitPlayer(
       name: payload.fullName,
       email: payload.email,
       mobileNumber: payload.mobileNumber,
-      dateOfBirth: payload.dateOfBirth,
+      dateOfBirth: normalizedDob,
       age: payload.age,
       gender: payload.gender,
       address: payload.address,
@@ -542,6 +645,7 @@ export async function admitPlayer(
       idCardNumber: payload.idCardNumber,
       copyStatus: payload.copyStatus,
       temporaryPassword: payload.temporaryPassword,
+      photoUrl: payload.photoUrl || undefined,
     };
 
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/players`, {

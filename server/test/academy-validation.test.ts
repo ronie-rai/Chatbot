@@ -81,9 +81,9 @@ test("invalid status rejected", () => {
   assert.equal(parsePlayerInput({ ...valid, status: "GONE" }).ok, false);
 });
 
-test("date validation rejects impossible dates and accepts ISO strings and Date instances", () => {
+test("date validation rejects impossible dates and normalizes various date formats", () => {
   assert.equal(parseDateOnly("2026-02-30", "d").ok, false);
-  assert.equal(parseDateOnly("20-02-2026", "d").ok, false);
+  assert.equal(parseDateOnly("32-01-2026", "d").ok, false);
   assert.equal(parseDateOnly("2026-02-28", "d").ok, true);
   assert.equal(parseDateOnly(" 2026-02-28 ", "d").ok, true);
   const iso = parseDateOnly("2026-02-28T10:30:00.000Z", "d");
@@ -92,6 +92,21 @@ test("date validation rejects impossible dates and accepts ISO strings and Date 
   const dateObj = parseDateOnly(new Date("2026-02-28T00:00:00.000Z"), "d");
   assert.equal(dateObj.ok, true);
   if (dateObj.ok) assert.equal(dateObj.value, "2026-02-28");
+
+  // DD-Mon-YYYY format (e.g. 12-Oct-2026)
+  const dMonY = parseDateOnly("12-Oct-2026", "d");
+  assert.equal(dMonY.ok, true);
+  if (dMonY.ok) assert.equal(dMonY.value, "2026-10-12");
+
+  // DD-MM-YYYY format (e.g. 20-02-2026)
+  const ddmmyyyy = parseDateOnly("20-02-2026", "d");
+  assert.equal(ddmmyyyy.ok, true);
+  if (ddmmyyyy.ok) assert.equal(ddmmyyyy.value, "2026-02-20");
+
+  // DD/MM/YYYY format (e.g. 13/10/2026)
+  const slashDate = parseDateOnly("13/10/2026", "d");
+  assert.equal(slashDate.ok, true);
+  if (slashDate.ok) assert.equal(slashDate.value, "2026-10-13");
 });
 
 test("time validation", () => {

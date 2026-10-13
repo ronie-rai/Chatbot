@@ -25,6 +25,8 @@ import {
   markAnnouncementRead,
   fetchAssessments,
   fetchReportsData,
+  normalizeToYyyyMmDd,
+  uploadPhoto,
   MOCK_ACTIVE_PROFILE,
 } from "../academy/api";
 
@@ -729,3 +731,42 @@ describe("fetchReportsData", () => {
     expect(data.attendance.attendanceRatePct).toBeGreaterThan(0);
   });
 });
+
+describe("normalizeToYyyyMmDd & uploadPhoto", () => {
+  test("normalizes various date representations to YYYY-MM-DD", () => {
+    expect(normalizeToYyyyMmDd("12-Oct-2026")).toBe("2026-10-12");
+    expect(normalizeToYyyyMmDd("13/10/2026")).toBe("2026-10-13");
+    expect(normalizeToYyyyMmDd("13-10-2026")).toBe("2026-10-13");
+    expect(normalizeToYyyyMmDd("2026-10-13")).toBe("2026-10-13");
+    expect(normalizeToYyyyMmDd("2026-10-13T10:00:00.000Z")).toBe("2026-10-13");
+    expect(normalizeToYyyyMmDd(null, "2026-10-13")).toBe("2026-10-13");
+  });
+
+  test("uploadPhoto falls back to local uri when offline or token is null", async () => {
+    setAcademyToken(null);
+    const res = await uploadPhoto({ uri: "file:///local/photo.jpg" });
+    expect(res.ok).toBe(true);
+    expect(res.url).toBe("file:///local/photo.jpg");
+  });
+
+  test("uploadPhoto calls /api/upload and returns URL when live", async () => {
+    setAcademyToken("tok");
+    jest.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          data: { url: "/uploads/photo_123.jpg" },
+        }),
+    } as unknown as Response);
+
+    const res = await uploadPhoto({
+      uri: "file:///local/photo.jpg",
+      base64: "base64data",
+      name: "player.jpg",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.url).toContain("/uploads/photo_123.jpg");
+  });
+});
+

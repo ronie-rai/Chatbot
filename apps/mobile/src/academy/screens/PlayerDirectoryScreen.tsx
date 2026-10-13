@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { Colors, Fonts, Radius, Spacing } from "../../theme/tokens";
@@ -19,6 +21,7 @@ import {
   admitPlayer,
   fetchPlayers,
   fetchSports,
+  uploadPhoto,
   type AcademyPlayer,
   type AcademySport,
 } from "../api";
@@ -48,7 +51,9 @@ export function PlayerDirectoryScreen({ route }: Props) {
 
   const [venue, setVenue] = useState("OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)");
   const [selectedSportId, setSelectedSportId] = useState("");
-  const [admissionDate, setAdmissionDate] = useState("12-Oct-2026");
+  const [admissionDate, setAdmissionDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
   const [startTime, setStartTime] = useState("06:00 AM");
   const [endTime, setEndTime] = useState("07:00 AM");
   const [sessionsPerWeek, setSessionsPerWeek] = useState("Any / Not specified");
@@ -65,6 +70,9 @@ export function PlayerDirectoryScreen({ route }: Props) {
   const [copyStatus, setCopyStatus] = useState("Approved");
   const [temporaryPassword, setTemporaryPassword] = useState("Welcome@123");
   const [hasPhotograph, setHasPhotograph] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Picker modal state
@@ -102,7 +110,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
     setGender("Male");
     setAddress("");
     setVenue("OFA Sports Foundation - 3 (Biju Patnaik Indoor Arena)");
-    setAdmissionDate("12-Oct-2026");
+    setAdmissionDate(new Date().toISOString().slice(0, 10));
     setStartTime("06:00 AM");
     setEndTime("07:00 AM");
     setSessionsPerWeek("Any / Not specified");
@@ -117,6 +125,8 @@ export function PlayerDirectoryScreen({ route }: Props) {
     setCopyStatus("Approved");
     setTemporaryPassword("Welcome@123");
     setHasPhotograph(false);
+    setPhotoUri(null);
+    setPhotoBase64(null);
   };
 
   const loadData = useCallback(async () => {
@@ -182,6 +192,20 @@ export function PlayerDirectoryScreen({ route }: Props) {
 
     setSubmitting(true);
     try {
+      let uploadedPhotoUrl = photoUri || undefined;
+      if (photoUri && photoBase64) {
+        setUploadingPhoto(true);
+        const upRes = await uploadPhoto({
+          uri: photoUri,
+          base64: photoBase64,
+          name: `${fullName.replace(/\s+/g, "_") || "player"}_photo.jpg`,
+        });
+        if (upRes.ok && upRes.url) {
+          uploadedPhotoUrl = upRes.url;
+        }
+        setUploadingPhoto(false);
+      }
+
       const selectedSport = sports.find((s) => s.id === selectedSportId);
       const res = await admitPlayer({
         fullName: fullName.trim(),
@@ -211,7 +235,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
         idCardNumber: idCardNumber.trim() || undefined,
         copyStatus,
         temporaryPassword: temporaryPassword.trim(),
-        photoUrl: hasPhotograph ? "player-photo-uploaded.jpg" : undefined,
+        photoUrl: uploadedPhotoUrl,
       });
 
       if (!res.ok || !res.player) {
@@ -248,7 +272,14 @@ export function PlayerDirectoryScreen({ route }: Props) {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
+            {item.photoUrl ? (
+              <Image
+                source={{ uri: item.photoUrl }}
+                style={{ width: 44, height: 44, borderRadius: 22 }}
+              />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </View>
           <View style={styles.playerMeta}>
             <View style={styles.nameRow}>
@@ -637,7 +668,7 @@ export function PlayerDirectoryScreen({ route }: Props) {
                     <View style={styles.iconInputWrap}>
                       <TextInput
                         style={[styles.darkInput, { paddingRight: 32 }]}
-                        placeholder="12-Oct-2026"
+                        placeholder="YYYY-MM-DD"
                         placeholderTextColor="#6E7681"
                         value={admissionDate}
                         onChangeText={setAdmissionDate}
@@ -931,17 +962,50 @@ export function PlayerDirectoryScreen({ route }: Props) {
                     <Text style={styles.label}>PHOTOGRAPH UPLOAD</Text>
                     <View style={styles.photoUploadRow}>
                       <View style={styles.avatarPlaceholder}>
-                        <Text style={{ fontSize: 20 }}>{hasPhotograph ? "📷" : "👤"}</Text>
+                        {photoUri ? (
+                          <Image
+                            source={{ uri: photoUri }}
+                            style={{ width: 44, height: 44, borderRadius: 22 }}
+                          />
+                        ) : (
+                          <Text style={{ fontSize: 20 }}>👤</Text>
+                        )}
                       </View>
                       <TouchableOpacity
                         style={[
                           styles.uploadBtn,
                           hasPhotograph && styles.uploadBtnActive,
                         ]}
-                        onPress={() => setHasPhotograph((prev) => !prev)}
+                        onPress={async () => {
+                          try {
+                            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                            if (!perm.granted) {
+                              Alert.alert(
+                                "Permission Required",
+                                "Please grant media library permission to choose a player photo."
+                              );
+                              return;
+                            }
+                            const result = await ImagePicker.launchImageLibraryAsync({
+                              mediaTypes: ["images"],
+                              allowsEditing: true,
+                              aspect: [1, 1],
+                              quality: 0.7,
+                              base64: true,
+                            });
+                            if (!result.canceled && result.assets && result.assets.length > 0) {
+                              const asset = result.assets[0];
+                              setPhotoUri(asset.uri);
+                              setPhotoBase64(asset.base64 || null);
+                              setHasPhotograph(true);
+                            }
+                          } catch {
+                            Alert.alert("Photo Error", "Could not select photo.");
+                          }
+                        }}
                       >
                         <Text style={styles.uploadBtnText}>
-                          {hasPhotograph ? "✓ Photo Attached" : "⬆ Upload Photograph"}
+                          {hasPhotograph ? "✓ Change Photo" : "⬆ Choose / Take Photograph"}
                         </Text>
                       </TouchableOpacity>
                     </View>

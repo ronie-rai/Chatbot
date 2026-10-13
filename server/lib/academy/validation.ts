@@ -51,6 +51,41 @@ export function parseDateOnly(v: unknown, field: string): Parsed<string> {
     strVal = strVal.slice(0, 10);
   }
 
+  // Normalize DD-Mon-YYYY or DD Mon YYYY (e.g. 12-Oct-2026, 12-October-2026, 13 Oct 2026)
+  const dMonY = strVal.match(/^(\d{1,2})[-/\s]([a-zA-Z]+)[-/\s](\d{4})$/);
+  if (dMonY) {
+    const day = dMonY[1].padStart(2, "0");
+    const mStr = dMonY[2].toLowerCase();
+    const monthNames: Record<string, string> = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+      january: "01", february: "02", march: "03", april: "04", june: "06",
+      july: "07", august: "08", september: "09", october: "10", november: "11", december: "12",
+    };
+    const month = monthNames[mStr.slice(0, 3)] || monthNames[mStr];
+    if (month) {
+      strVal = `${dMonY[3]}-${month}-${day}`;
+    }
+  }
+
+  // Normalize DD-MM-YYYY or DD/MM/YYYY (e.g. 12/10/2026, 12-10-2026)
+  const ddmmyyyy = strVal.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (ddmmyyyy) {
+    const day = ddmmyyyy[1].padStart(2, "0");
+    const month = ddmmyyyy[2].padStart(2, "0");
+    const year = ddmmyyyy[3];
+    strVal = `${year}-${month}-${day}`;
+  }
+
+  // Normalize YYYY/MM/DD
+  const yyyymmdd = strVal.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (yyyymmdd) {
+    const year = yyyymmdd[1];
+    const month = yyyymmdd[2].padStart(2, "0");
+    const day = yyyymmdd[3].padStart(2, "0");
+    strVal = `${year}-${month}-${day}`;
+  }
+
   if (!/^\d{4}-\d{2}-\d{2}$/.test(strVal)) {
     return fail(`${field} must be a date in YYYY-MM-DD format`);
   }

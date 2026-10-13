@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -13,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { Colors } from "../theme/tokens";
@@ -34,6 +36,7 @@ import {
   fetchPlayers,
   fetchSports,
   recordPayment,
+  uploadPhoto,
   MOCK_PLAYERS,
   MOCK_BOOKINGS,
   MOCK_INVOICES,
@@ -118,7 +121,9 @@ export function DashboardScreen({ navigation, route }: Props) {
     "OFA Sports Foundation - 3 (Biju Patnaik Indoor)"
   );
   const [admitSportId, setAdmitSportId] = useState("");
-  const [admitAdmissionDate, setAdmitAdmissionDate] = useState("12-Oct-2026");
+  const [admitAdmissionDate, setAdmitAdmissionDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
   const [admitStartTime, setAdmitStartTime] = useState("06:00 AM");
   const [admitEndTime, setAdmitEndTime] = useState("07:00 AM");
   const [admitSessionsWeek, setAdmitSessionsWeek] = useState("Any / Not specified");
@@ -133,6 +138,9 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [admitCopyStatus, setAdmitCopyStatus] = useState("Approved");
   const [admitTempPassword, setAdmitTempPassword] = useState("Welcome@123");
   const [admitHasPhoto, setAdmitHasPhoto] = useState(false);
+  const [admitPhotoUri, setAdmitPhotoUri] = useState<string | null>(null);
+  const [admitPhotoBase64, setAdmitPhotoBase64] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submittingAdmission, setSubmittingAdmission] = useState(false);
 
   // Record Payment Form State
@@ -246,6 +254,35 @@ export function DashboardScreen({ navigation, route }: Props) {
     }
   };
 
+  // Handler: Pick Player Photo from Gallery
+  const handlePickPhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          "Permission Required",
+          "Please grant media library permission to upload a photo."
+        );
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setAdmitPhotoUri(asset.uri);
+        setAdmitPhotoBase64(asset.base64 || null);
+        setAdmitHasPhoto(true);
+      }
+    } catch {
+      Alert.alert("Photo Picker Error", "Unable to select photograph.");
+    }
+  };
+
   // Handler: In-Place Booking Creation
   const handleCreateBookingSubmit = async () => {
     if (!newBookingTitle.trim() || !newBookingCustomer.trim()) {
@@ -320,6 +357,20 @@ export function DashboardScreen({ navigation, route }: Props) {
     setSubmittingAdmission(true);
 
     try {
+      let uploadedPhotoUrl = admitPhotoUri || undefined;
+      if (admitPhotoUri && admitPhotoBase64) {
+        setUploadingPhoto(true);
+        const upRes = await uploadPhoto({
+          uri: admitPhotoUri,
+          base64: admitPhotoBase64,
+          name: `${admitFullName.replace(/\s+/g, "_") || "player"}_photo.jpg`,
+        });
+        if (upRes.ok && upRes.url) {
+          uploadedPhotoUrl = upRes.url;
+        }
+        setUploadingPhoto(false);
+      }
+
       const payload: PlayerAdmissionPayload = {
         fullName: admitFullName.trim(),
         email: admitEmail.trim(),
@@ -345,7 +396,7 @@ export function DashboardScreen({ navigation, route }: Props) {
         idCardNumber: admitIdCard.trim() || undefined,
         copyStatus: admitCopyStatus,
         temporaryPassword: admitTempPassword.trim(),
-        photoUrl: admitHasPhoto ? "player-photo-uploaded.jpg" : undefined,
+        photoUrl: uploadedPhotoUrl,
       };
 
       const res = await admitPlayer(payload);
@@ -362,6 +413,9 @@ export function DashboardScreen({ navigation, route }: Props) {
       setAdmitEmail("");
       setAdmitMobile("");
       setAdmitAddress("");
+      setAdmitPhotoUri(null);
+      setAdmitPhotoBase64(null);
+      setAdmitHasPhoto(false);
       Alert.alert(
         "Admission Confirmed",
         `Assigned atomic identifier: ${res.player.playerCode}`
@@ -369,6 +423,7 @@ export function DashboardScreen({ navigation, route }: Props) {
     } catch {
       Alert.alert("Error", "Failed to submit player admission.");
     } finally {
+      setUploadingPhoto(false);
       setSubmittingAdmission(false);
     }
   };
@@ -615,9 +670,17 @@ export function DashboardScreen({ navigation, route }: Props) {
         width: 160,
         sortValue: (p) => p.fullName,
         renderCell: (p) => (
-          <Text style={styles.cellBoldText} numberOfLines={1}>
-            {p.fullName}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {p.photoUrl ? (
+              <Image
+                source={{ uri: p.photoUrl }}
+                style={{ width: 22, height: 22, borderRadius: 11 }}
+              />
+            ) : null}
+            <Text style={styles.cellBoldText} numberOfLines={1}>
+              {p.fullName}
+            </Text>
+          </View>
         ),
       },
       {
@@ -1731,10 +1794,10 @@ export function DashboardScreen({ navigation, route }: Props) {
 
                 <View style={styles.formRow}>
                   <View style={styles.formCol}>
-                    <Text style={styles.formLabel}>ADMISSION DATE *</Text>
+                    <Text style={styles.formLabel}>ADMISSION DATE (YYYY-MM-DD) *</Text>
                     <TextInput
                       style={styles.modalDarkInput}
-                      placeholder="12-Oct-2026"
+                      placeholder="YYYY-MM-DD"
                       placeholderTextColor="#64748B"
                       value={admitAdmissionDate}
                       onChangeText={setAdmitAdmissionDate}
@@ -1882,17 +1945,26 @@ export function DashboardScreen({ navigation, route }: Props) {
                   </View>
                   <View style={styles.formCol}>
                     <Text style={styles.formLabel}>PHOTOGRAPH UPLOAD</Text>
-                    <TouchableOpacity
-                      style={[
-                        styles.photoUploadBtn,
-                        admitHasPhoto && styles.photoUploadBtnActive,
-                      ]}
-                      onPress={() => setAdmitHasPhoto(!admitHasPhoto)}
-                    >
-                      <Text style={styles.photoUploadBtnText}>
-                        {admitHasPhoto ? "✓ Photo Attached" : "📷 Upload Photograph"}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      {admitPhotoUri ? (
+                        <Image
+                          source={{ uri: admitPhotoUri }}
+                          style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: Colors.primary }}
+                        />
+                      ) : null}
+                      <TouchableOpacity
+                        style={[
+                          styles.photoUploadBtn,
+                          admitHasPhoto && styles.photoUploadBtnActive,
+                          { flex: 1 },
+                        ]}
+                        onPress={handlePickPhoto}
+                      >
+                        <Text style={styles.photoUploadBtnText}>
+                          {admitHasPhoto ? "✓ Change Photo" : "📷 Upload Photograph"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </View>
