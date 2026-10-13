@@ -108,7 +108,7 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [activeTab, setActiveTab] = useState<RibbonTab>(
     (route.params?.initialTab as RibbonTab) || "overview"
   );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => Dimensions.get("window").width < 768);
   const [windowWidth, setWindowWidth] = useState(Dimensions.get("window").width);
 
   // Data states
@@ -1125,149 +1125,311 @@ export function DashboardScreen({ navigation, route }: Props) {
       { id: "announcements", label: "Announcements", icon: "📢", badge: String(announcements.length) },
     ];
 
-    const isCollapsed = sidebarCollapsed || !isTablet;
+    const isMobile = !isTablet;
+    const isRailCollapsed = isMobile ? true : sidebarCollapsed;
 
     return (
-      <View
-        style={[
-          styles.sidebarContainer,
-          isCollapsed && styles.sidebarCollapsed,
-          !isTablet && styles.mobileSidebarRail,
-        ]}
-      >
-        {/* Brand & Organization Header */}
-        <TouchableOpacity
-          style={styles.brandHeader}
-          onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
-          activeOpacity={0.8}
+      <>
+        {/* Inline Navigation Rail */}
+        <View
+          style={[
+            styles.sidebarContainer,
+            (isRailCollapsed || isMobile) && styles.sidebarCollapsed,
+            isMobile && styles.mobileSidebarRail,
+          ]}
         >
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandLogoIcon}>⚡</Text>
-          </View>
-          {!isCollapsed && (
-            <View style={styles.brandTextWrap}>
-              <Text style={styles.brandTitle}>OFA ACADEMY</Text>
-              <View style={styles.liveIndicatorRow}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>OPERATIONS</Text>
-              </View>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* User Card */}
-        {!isCollapsed && (
-          <View style={styles.userCard}>
-            <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>
-                {MOCK_CURRENT_USER.name.slice(0, 1).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {MOCK_CURRENT_USER.name}
-              </Text>
-              <Text style={styles.userRole}>
-                {MOCK_CURRENT_USER.role === "admin" ? "👑 Admin" : "👔 Staff"}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Navigation Items List */}
-        <ScrollView style={styles.navListScroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.navSectionHeading}>
-            {!isCollapsed ? "NAVIGATION TABS" : "•••"}
-          </Text>
-
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.navItemBtn,
-                  isActive && styles.navItemBtnActive,
-                  isCollapsed && styles.navItemBtnCollapsed,
-                ]}
-                onPress={() => {
-                  if (item.isAction) {
-                    item.isAction();
-                  } else {
-                    setActiveTab(item.id as RibbonTab);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.navItemIcon}>{item.icon}</Text>
-                {!isCollapsed && (
-                  <View style={styles.navItemLabelWrap}>
-                    <Text
-                      style={[
-                        styles.navItemLabel,
-                        isActive && styles.navItemLabelActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {item.label}
-                    </Text>
-                    {item.badge && (
-                      <View style={[styles.navBadge, isActive && styles.navBadgeActive]}>
-                        <Text style={[styles.navBadgeText, isActive && styles.navBadgeTextActive]}>
-                          {item.badge}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-
-          {/* Quick jump to OFA Assistant */}
-          <View style={styles.chatNavSeparator} />
+          {/* Rail Header / Brand & Navigation Expander Button */}
           <TouchableOpacity
-            style={[styles.chatNavBtn, isCollapsed && styles.chatNavBtnCollapsed]}
-            onPress={() =>
-              navigation.navigate("Chat", {
-                conversationId: "ofa-conv-001",
-                conversationName: "OFA Assistant",
-              })
-            }
+            style={styles.railExpanderBtn}
+            onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
             activeOpacity={0.7}
           >
-            <Text style={styles.navItemIcon}>💬</Text>
-            {!isCollapsed && (
-              <View style={{ flex: 1 }}>
-                <Text style={styles.chatNavLabel}>OFA Assistant</Text>
-                <Text style={styles.chatNavSubLabel}>Read-Only Tables</Text>
+            <Text style={styles.railExpanderIcon}>☰</Text>
+            <Text style={styles.railExpanderLabel}>
+              {isMobile ? "EXPAND" : sidebarCollapsed ? "EXPAND" : "CLOSE"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.brandHeader}
+            onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.brandBadge}>
+              <Text style={styles.brandLogoIcon}>⚡</Text>
+            </View>
+            {!isRailCollapsed && !isMobile && (
+              <View style={styles.brandTextWrap}>
+                <Text style={styles.brandTitle}>OFA ACADEMY</Text>
+                <View style={styles.liveIndicatorRow}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>OPERATIONS</Text>
+                </View>
               </View>
             )}
           </TouchableOpacity>
-        </ScrollView>
 
-        {/* Footer Actions */}
-        <View style={styles.sidebarFooter}>
-          {isTablet && (
-            <TouchableOpacity
-              style={styles.collapseToggleBtn}
-              onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
-            >
-              <Text style={styles.collapseToggleText}>
-                {sidebarCollapsed ? "▶" : "◀ Collapse"}
-              </Text>
-            </TouchableOpacity>
+          {/* User Card (Tablet Expanded only) */}
+          {!isRailCollapsed && !isMobile && (
+            <View style={styles.userCard}>
+              <View style={styles.userAvatar}>
+                <Text style={styles.userAvatarText}>
+                  {MOCK_CURRENT_USER.name.slice(0, 1).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={styles.userName} numberOfLines={1}>
+                  {MOCK_CURRENT_USER.name}
+                </Text>
+                <Text style={styles.userRole}>
+                  {MOCK_CURRENT_USER.role === "admin" ? "👑 Admin" : "👔 Staff"}
+                </Text>
+              </View>
+            </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.signOutBtn, isCollapsed && styles.signOutBtnCollapsed]}
-            onPress={handleSignOut}
-          >
-            <Text style={styles.signOutIcon}>🚪</Text>
-            {!isCollapsed && <Text style={styles.signOutText}>Sign Out</Text>}
-          </TouchableOpacity>
+          {/* Navigation Items List */}
+          <ScrollView style={styles.navListScroll} showsVerticalScrollIndicator={false}>
+            <Text style={styles.navSectionHeading}>
+              {!isRailCollapsed && !isMobile ? "NAVIGATION TABS" : "•••"}
+            </Text>
+
+            {navItems.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.navItemBtn,
+                    isActive && styles.navItemBtnActive,
+                    (isRailCollapsed || isMobile) && styles.navItemBtnCollapsed,
+                  ]}
+                  onPress={() => {
+                    if (item.isAction) {
+                      item.isAction();
+                    } else {
+                      setActiveTab(item.id as RibbonTab);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.navItemIcon}>{item.icon}</Text>
+                  {!isRailCollapsed && !isMobile && (
+                    <View style={styles.navItemLabelWrap}>
+                      <Text
+                        style={[
+                          styles.navItemLabel,
+                          isActive && styles.navItemLabelActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.label}
+                      </Text>
+                      {item.badge && (
+                        <View style={[styles.navBadge, isActive && styles.navBadgeActive]}>
+                          <Text style={[styles.navBadgeText, isActive && styles.navBadgeTextActive]}>
+                            {item.badge}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* Quick jump to OFA Assistant */}
+            <View style={styles.chatNavSeparator} />
+            <TouchableOpacity
+              style={[styles.chatNavBtn, (isRailCollapsed || isMobile) && styles.chatNavBtnCollapsed]}
+              onPress={() =>
+                navigation.navigate("Chat", {
+                  conversationId: "ofa-conv-001",
+                  conversationName: "OFA Assistant",
+                })
+              }
+              activeOpacity={0.7}
+            >
+              <Text style={styles.navItemIcon}>💬</Text>
+              {!isRailCollapsed && !isMobile && (
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.chatNavLabel}>OFA Assistant</Text>
+                  <Text style={styles.chatNavSubLabel}>Read-Only Tables</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* Footer Actions */}
+          <View style={styles.sidebarFooter}>
+            {isTablet && (
+              <TouchableOpacity
+                style={styles.collapseToggleBtn}
+                onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+              >
+                <Text style={styles.collapseToggleText}>
+                  {sidebarCollapsed ? "▶ Expand" : "◀ Collapse"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.signOutBtn, (isRailCollapsed || isMobile) && styles.signOutBtnCollapsed]}
+              onPress={handleSignOut}
+            >
+              <Text style={styles.signOutIcon}>🚪</Text>
+              {!isRailCollapsed && !isMobile && <Text style={styles.signOutText}>Sign Out</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+
+        {/* ── Mobile Overlay Navigation Drawer (Shows ALL Names when expanded) ── */}
+        {isMobile && !sidebarCollapsed && (
+          <Modal
+            visible={!sidebarCollapsed}
+            animationType="fade"
+            transparent
+            onRequestClose={() => setSidebarCollapsed(true)}
+          >
+            <View style={styles.drawerModalBackdrop}>
+              <View style={styles.drawerPanel}>
+                {/* Drawer Header with Brand & Close Button */}
+                <View style={styles.drawerHeaderRow}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                    <View style={styles.brandBadge}>
+                      <Text style={styles.brandLogoIcon}>⚡</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.brandTitle}>OFA ACADEMY</Text>
+                      <View style={styles.liveIndicatorRow}>
+                        <View style={styles.liveDot} />
+                        <Text style={styles.liveText}>OPERATIONS LIVE</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.drawerCloseBtn}
+                    onPress={() => setSidebarCollapsed(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.drawerCloseText}>✕ Close</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* User Card */}
+                <View style={styles.userCard}>
+                  <View style={styles.userAvatar}>
+                    <Text style={styles.userAvatarText}>
+                      {MOCK_CURRENT_USER.name.slice(0, 1).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName} numberOfLines={1}>
+                      {MOCK_CURRENT_USER.name}
+                    </Text>
+                    <Text style={styles.userRole}>
+                      {MOCK_CURRENT_USER.role === "admin" ? "👑 Admin" : "👔 Staff"}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Expanded Nav Items with ALL Names visible */}
+                <ScrollView style={styles.navListScroll} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.navSectionHeading}>ALL NAVIGATION TABS</Text>
+                  {navItems.map((item) => {
+                    const isActive = activeTab === item.id;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.navItemBtn,
+                          isActive && styles.navItemBtnActive,
+                        ]}
+                        onPress={() => {
+                          setSidebarCollapsed(true);
+                          if (item.isAction) {
+                            item.isAction();
+                          } else {
+                            setActiveTab(item.id as RibbonTab);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.navItemIcon}>{item.icon}</Text>
+                        <View style={styles.navItemLabelWrap}>
+                          <Text
+                            style={[
+                              styles.navItemLabel,
+                              isActive && styles.navItemLabelActive,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.label}
+                          </Text>
+                          {item.badge && (
+                            <View style={[styles.navBadge, isActive && styles.navBadgeActive]}>
+                              <Text style={[styles.navBadgeText, isActive && styles.navBadgeTextActive]}>
+                                {item.badge}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  <View style={styles.chatNavSeparator} />
+                  <TouchableOpacity
+                    style={styles.chatNavBtn}
+                    onPress={() => {
+                      setSidebarCollapsed(true);
+                      navigation.navigate("Chat", {
+                        conversationId: "ofa-conv-001",
+                        conversationName: "OFA Assistant",
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.navItemIcon}>💬</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.chatNavLabel}>OFA Assistant</Text>
+                      <Text style={styles.chatNavSubLabel}>Read-Only Tables</Text>
+                    </View>
+                  </TouchableOpacity>
+                </ScrollView>
+
+                {/* Drawer Footer */}
+                <View style={styles.sidebarFooter}>
+                  <TouchableOpacity
+                    style={styles.collapseToggleBtn}
+                    onPress={() => setSidebarCollapsed(true)}
+                  >
+                    <Text style={styles.collapseToggleText}>◀ Collapse Menu</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.signOutBtn}
+                    onPress={() => {
+                      setSidebarCollapsed(true);
+                      handleSignOut();
+                    }}
+                  >
+                    <Text style={styles.signOutIcon}>🚪</Text>
+                    <Text style={styles.signOutText}>Sign Out</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Tapping backdrop dismisses drawer */}
+              <TouchableOpacity
+                style={styles.drawerDismissOverlay}
+                activeOpacity={1}
+                onPress={() => setSidebarCollapsed(true)}
+              />
+            </View>
+          </Modal>
+        )}
+      </>
     );
   };
 
@@ -1287,11 +1449,12 @@ export function DashboardScreen({ navigation, route }: Props) {
             <TouchableOpacity
               style={styles.hamburgerBtn}
               onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+              activeOpacity={0.7}
             >
-              <Text style={styles.hamburgerIcon}>{sidebarCollapsed || !isTablet ? "▶" : "◀"}</Text>
+              <Text style={styles.hamburgerIcon}>{sidebarCollapsed ? "☰" : "◀"}</Text>
             </TouchableOpacity>
-            <View>
-              <Text style={styles.stageTitle}>
+            <View style={styles.stageTitleWrap}>
+              <Text style={styles.stageTitle} numberOfLines={1} ellipsizeMode="tail">
                 {activeTab === "overview" && "📊 Executive Operations Hub"}
                 {activeTab === "bookings" && "📅 Courts & Facility Bookings"}
                 {activeTab === "players" && "👥 Players Directory & Admissions"}
@@ -1303,9 +1466,11 @@ export function DashboardScreen({ navigation, route }: Props) {
                 {activeTab === "announcements" && "📢 Academy Announcements"}
                 {activeTab === "submissions" && "🤖 Bot Submissions Archive"}
               </Text>
-              <Text style={styles.stageSubtitle}>
-                Real-time operational dashboard with dynamic table column customization
-              </Text>
+              {isTablet && (
+                <Text style={styles.stageSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                  Real-time operational dashboard with dynamic table column customization
+                </Text>
+              )}
             </View>
           </View>
 
@@ -1319,13 +1484,15 @@ export function DashboardScreen({ navigation, route }: Props) {
               <Text style={styles.refreshIconText}>🔄</Text>
             </TouchableOpacity>
 
-            {activeTab === "bookings" && (
+            {(activeTab === "bookings" || activeTab === "overview" || activeTab === "consumables") && (
               <TouchableOpacity
                 style={styles.primaryActionBtn}
                 onPress={() => setIsNewBookingModalOpen(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryActionBtnText}>+ New Booking</Text>
+                <Text style={styles.primaryActionBtnText}>
+                  {windowWidth < 420 ? "+ New" : "+ New Booking"}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -1335,7 +1502,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                 onPress={() => setIsAdmitPlayerModalOpen(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryActionBtnText}>+ Admit Player</Text>
+                <Text style={styles.primaryActionBtnText}>
+                  {windowWidth < 420 ? "+ Admit" : "+ Admit Player"}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -1345,7 +1514,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                 onPress={() => setIsRecordPaymentModalOpen(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryActionBtnText}>+ Record Payment</Text>
+                <Text style={styles.primaryActionBtnText}>
+                  {windowWidth < 420 ? "+ Pay" : "+ Record Payment"}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1419,11 +1590,11 @@ export function DashboardScreen({ navigation, route }: Props) {
                   {/* Overview Table 1: Upcoming Bookings Preview */}
                   <View style={styles.overviewSectionCard}>
                     <View style={styles.overviewSectionHeader}>
-                      <View>
-                        <Text style={styles.overviewSectionTitle}>
+                      <View style={styles.overviewSectionTitleWrap}>
+                        <Text style={styles.overviewSectionTitle} numberOfLines={1} ellipsizeMode="tail">
                           📅 Latest Court & Facility Bookings
                         </Text>
-                        <Text style={styles.overviewSectionSub}>
+                        <Text style={styles.overviewSectionSub} numberOfLines={1} ellipsizeMode="tail">
                           Live table of slot reservations
                         </Text>
                       </View>
@@ -1431,7 +1602,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                         style={styles.sectionHeaderActionBtn}
                         onPress={() => setIsNewBookingModalOpen(true)}
                       >
-                        <Text style={styles.sectionHeaderActionText}>+ New Booking</Text>
+                        <Text style={styles.sectionHeaderActionText}>
+                          {windowWidth < 420 ? "+ New" : "+ New Booking"}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                     <FlexibleDataTable
@@ -1445,11 +1618,11 @@ export function DashboardScreen({ navigation, route }: Props) {
                   {/* Overview Table 2: Recent Player Admissions */}
                   <View style={styles.overviewSectionCard}>
                     <View style={styles.overviewSectionHeader}>
-                      <View>
-                        <Text style={styles.overviewSectionTitle}>
+                      <View style={styles.overviewSectionTitleWrap}>
+                        <Text style={styles.overviewSectionTitle} numberOfLines={1} ellipsizeMode="tail">
                           👥 Recent Player Admissions
                         </Text>
-                        <Text style={styles.overviewSectionSub}>
+                        <Text style={styles.overviewSectionSub} numberOfLines={1} ellipsizeMode="tail">
                           Latest player intake sequence records
                         </Text>
                       </View>
@@ -1457,7 +1630,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                         style={styles.sectionHeaderActionBtn}
                         onPress={() => setIsAdmitPlayerModalOpen(true)}
                       >
-                        <Text style={styles.sectionHeaderActionText}>+ Admit Player</Text>
+                        <Text style={styles.sectionHeaderActionText}>
+                          {windowWidth < 420 ? "+ Admit" : "+ Admit Player"}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                     <FlexibleDataTable
@@ -1517,7 +1692,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                         style={styles.inlineActionBtn}
                         onPress={() => setIsNewBookingModalOpen(true)}
                       >
-                        <Text style={styles.inlineActionText}>+ Add Booking</Text>
+                        <Text style={styles.inlineActionText}>
+                          {windowWidth < 420 ? "+ New" : "+ Add Booking"}
+                        </Text>
                       </TouchableOpacity>
                     }
                   />
@@ -1571,7 +1748,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                         style={styles.inlineActionBtn}
                         onPress={() => setIsAdmitPlayerModalOpen(true)}
                       >
-                        <Text style={styles.inlineActionText}>+ Admit Player</Text>
+                        <Text style={styles.inlineActionText}>
+                          {windowWidth < 420 ? "+ Admit" : "+ Admit Player"}
+                        </Text>
                       </TouchableOpacity>
                     }
                   />
@@ -1786,11 +1965,11 @@ export function DashboardScreen({ navigation, route }: Props) {
               {activeTab === "consumables" && (
                 <View style={styles.overviewSectionCard}>
                   <View style={styles.overviewSectionHeader}>
-                    <View>
-                      <Text style={styles.overviewSectionTitle}>
+                    <View style={styles.overviewSectionTitleWrap}>
+                      <Text style={styles.overviewSectionTitle} numberOfLines={1} ellipsizeMode="tail">
                         📦 Academy Consumables & Equipment Catalog
                       </Text>
-                      <Text style={styles.overviewSectionSub}>
+                      <Text style={styles.overviewSectionSub} numberOfLines={1} ellipsizeMode="tail">
                         Inventory list of consumable items and rental gear with fixed rates
                       </Text>
                     </View>
@@ -1798,7 +1977,9 @@ export function DashboardScreen({ navigation, route }: Props) {
                       style={styles.sectionHeaderActionBtn}
                       onPress={() => setIsNewBookingModalOpen(true)}
                     >
-                      <Text style={styles.sectionHeaderActionText}>+ New Booking</Text>
+                      <Text style={styles.sectionHeaderActionText}>
+                        {windowWidth < 420 ? "+ New" : "+ New Booking"}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                   <FlexibleDataTable
@@ -2568,29 +2749,77 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F1626",
     borderRightWidth: 1,
     borderRightColor: "#1B273E",
-    paddingVertical: 14,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     justifyContent: "space-between",
   },
   sidebarCollapsed: {
-    width: 68,
-    paddingHorizontal: 6,
-  },
-  mobileSidebarRail: {
-    width: 68,
+    width: 64,
     paddingHorizontal: 4,
   },
-  mobileSidebarDrawer: {
-    width: 260,
-    height: "100%",
+  mobileSidebarRail: {
+    width: 64,
+    paddingHorizontal: 4,
   },
-  mobileModalBackdrop: {
+  railExpanderBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    backgroundColor: "#17233B",
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#253759",
+  },
+  railExpanderIcon: {
+    color: "#38BDF8",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  railExpanderLabel: {
+    color: "#94A3B8",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  drawerModalBackdrop: {
     flex: 1,
     flexDirection: "row",
     backgroundColor: "rgba(0,0,0,0.65)",
   },
-  mobileBackdropDismiss: {
+  drawerPanel: {
+    width: 270,
+    height: "100%",
+    backgroundColor: "#0F1626",
+    borderRightWidth: 1,
+    borderRightColor: "#1B273E",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    justifyContent: "space-between",
+  },
+  drawerDismissOverlay: {
     flex: 1,
+  },
+  drawerHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1A253A",
+  },
+  drawerCloseBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: "#1A253A",
+  },
+  drawerCloseText: {
+    color: "#94A3B8",
+    fontSize: 11,
+    fontWeight: "700",
   },
 
   brandHeader: {
@@ -2829,16 +3058,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#1A253A",
     backgroundColor: "#0D1322",
   },
   topBarLeft: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
+    marginRight: 8,
+  },
+  stageTitleWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   hamburgerBtn: {
     padding: 6,
@@ -2852,7 +3088,7 @@ const styles = StyleSheet.create({
   },
   stageTitle: {
     color: "#F8FAFC",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
   },
   stageSubtitle: {
@@ -2863,27 +3099,29 @@ const styles = StyleSheet.create({
   topBarActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    flexShrink: 0,
+    gap: 6,
   },
   refreshIconBtn: {
-    padding: 8,
+    padding: 6,
     borderRadius: 8,
     backgroundColor: "#162238",
     borderWidth: 1,
     borderColor: "#243552",
   },
   refreshIconText: {
-    fontSize: 14,
+    fontSize: 13,
   },
   primaryActionBtn: {
     backgroundColor: "#16A34A",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: 8,
+    flexShrink: 0,
   },
   primaryActionBtnText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
   },
 
@@ -2961,8 +3199,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
-    flexWrap: "wrap",
     gap: 8,
+  },
+  overviewSectionTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   overviewSectionTitle: {
     color: "#F1F5F9",
@@ -2976,13 +3218,14 @@ const styles = StyleSheet.create({
   },
   sectionHeaderActionBtn: {
     backgroundColor: "#2563EB",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
+    flexShrink: 0,
   },
   sectionHeaderActionText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
   },
 
@@ -2992,12 +3235,12 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
   searchBarInput: {
     flex: 1,
-    minWidth: 220,
+    minWidth: 150,
     backgroundColor: "#131C2D",
     borderWidth: 1,
     borderColor: "#223048",

@@ -382,7 +382,8 @@ const styles = StyleSheet.create({
   toolbarRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    flexWrap: "wrap",
+    gap: 6,
   },
   densityPillGroup: {
     flexDirection: "row",
