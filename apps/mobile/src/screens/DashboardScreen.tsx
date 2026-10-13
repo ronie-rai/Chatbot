@@ -241,8 +241,17 @@ export function DashboardScreen({ navigation, route }: Props) {
         setSubmissions(dashData.data.submissions);
       }
 
-      if ((sData || []).length > 0 && !admitSportId) {
-        setAdmitSportId(sData[0].id);
+      if ((sData || []).length > 0) {
+        const found = sData.find(
+          (s: any) =>
+            s.id === admitSportId ||
+            s.name.toLowerCase() === admitSportId.toLowerCase()
+        );
+        if (found) {
+          setAdmitSportId(found.id);
+        } else if (!admitSportId) {
+          setAdmitSportId(sData[0].id);
+        }
       }
       if ((fData || []).length > 0 && !newBookingFacilityId) {
         setNewBookingFacilityId(fData[0].id);
@@ -491,7 +500,13 @@ export function DashboardScreen({ navigation, route }: Props) {
       return;
     }
 
-    const selectedSport = sports.find((s) => s.id === admitSportId);
+    const selectedSport = sports.find(
+      (s) =>
+        s.id === admitSportId ||
+        s.name.toLowerCase() === admitSportId.toLowerCase()
+    );
+    const effectiveSportId = selectedSport?.id || admitSportId;
+    const effectiveSportName = selectedSport?.name || admitSportId;
     setSubmittingAdmission(true);
 
     try {
@@ -518,8 +533,8 @@ export function DashboardScreen({ navigation, route }: Props) {
         gender: admitGender,
         address: admitAddress.trim() || undefined,
         venue: admitVenue,
-        primarySportId: admitSportId,
-        primarySportName: selectedSport?.name || "Selected Sport",
+        primarySportId: effectiveSportId,
+        primarySportName: effectiveSportName,
         admissionDate: admitAdmissionDate,
         startTime: admitStartTime,
         endTime: admitEndTime,
@@ -2182,25 +2197,33 @@ export function DashboardScreen({ navigation, route }: Props) {
 
                 <Text style={styles.formLabel}>PREFERRED SPORT *</Text>
                 <View style={styles.sportPillGrid}>
-                  {PREFERRED_SPORTS.map((sp) => (
-                    <TouchableOpacity
-                      key={sp}
-                      style={[
-                        styles.sportPill,
-                        admitSportId === sp && styles.sportPillActive,
-                      ]}
-                      onPress={() => setAdmitSportId(sp)}
-                    >
-                      <Text
+                  {PREFERRED_SPORTS.map((sp) => {
+                    const isSelected =
+                      admitSportId.toLowerCase() === sp.toLowerCase() ||
+                      sports.find((s) => s.id === admitSportId)?.name.toLowerCase() === sp.toLowerCase();
+                    return (
+                      <TouchableOpacity
+                        key={sp}
                         style={[
-                          styles.sportPillText,
-                          admitSportId === sp && styles.sportPillTextActive,
+                          styles.sportPill,
+                          isSelected && styles.sportPillActive,
                         ]}
+                        onPress={() => {
+                          const matched = sports.find((s) => s.name.toLowerCase() === sp.toLowerCase());
+                          setAdmitSportId(matched ? matched.id : sp);
+                        }}
                       >
-                        {sp}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.sportPillText,
+                            isSelected && styles.sportPillTextActive,
+                          ]}
+                        >
+                          {sp}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 <View style={styles.formRow}>

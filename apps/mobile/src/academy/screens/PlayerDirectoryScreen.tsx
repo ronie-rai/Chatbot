@@ -187,8 +187,17 @@ export function PlayerDirectoryScreen({ route }: Props) {
       ]);
       setPlayers(pRes?.players || []);
       setSports(sRes || []);
-      if ((sRes || []).length > 0 && !selectedSportId) {
-        setSelectedSportId(sRes[0].id);
+      if ((sRes || []).length > 0) {
+        const found = sRes.find(
+          (s) =>
+            s.id === selectedSportId ||
+            s.name.toLowerCase() === selectedSportId.toLowerCase()
+        );
+        if (found) {
+          setSelectedSportId(found.id);
+        } else if (!selectedSportId) {
+          setSelectedSportId(sRes[0].id);
+        }
       }
     } catch {
       setPlayers([]);
@@ -256,7 +265,13 @@ export function PlayerDirectoryScreen({ route }: Props) {
         setUploadingPhoto(false);
       }
 
-      const selectedSport = sports.find((s) => s.id === selectedSportId);
+      const selectedSport = sports.find(
+        (s) =>
+          s.id === selectedSportId ||
+          s.name.toLowerCase() === selectedSportId.toLowerCase()
+      );
+      const effectiveSportId = selectedSport?.id || selectedSportId;
+      const effectiveSportName = selectedSport?.name || selectedSportId;
       const res = await admitPlayer({
         fullName: fullName.trim(),
         email: email.trim(),
@@ -267,8 +282,8 @@ export function PlayerDirectoryScreen({ route }: Props) {
         address: address.trim() || undefined,
 
         venue,
-        primarySportId: selectedSportId,
-        primarySportName: selectedSport?.name || "Selected Sport",
+        primarySportId: effectiveSportId,
+        primarySportName: effectiveSportName,
         admissionDate,
         startTime,
         endTime,
@@ -709,13 +724,21 @@ export function PlayerDirectoryScreen({ route }: Props) {
                             "Pickleball",
                             "Table Tennis",
                           ].map((s) => ({ label: s, value: s })),
-                          selectedValue: selectedSportId,
-                          onSelect: (val) => setSelectedSportId(val),
+                          selectedValue:
+                            sports.find((s) => s.id === selectedSportId)?.name ||
+                            selectedSportId,
+                          onSelect: (val) => {
+                            const matched = sports.find(
+                              (s) => s.name.toLowerCase() === val.toLowerCase()
+                            );
+                            setSelectedSportId(matched ? matched.id : val);
+                          },
                         })
                       }
                     >
                       <Text style={styles.dropdownValue} numberOfLines={1}>
-                        {selectedSportId}
+                        {sports.find((s) => s.id === selectedSportId)?.name ||
+                          selectedSportId}
                       </Text>
                       <Text style={styles.dropdownChevron}>▼</Text>
                     </TouchableOpacity>

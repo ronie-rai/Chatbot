@@ -310,9 +310,12 @@ interface ApiEnvelope<T> {
 // ─── Offline Fallback Mock Datasets ──────────────────────────────────────────
 
 const MOCK_SPORTS: AcademySport[] = [
-  { id: "sport-badminton", name: "Badminton", category: "RACKET", billingMethod: "MONTHLY_RECURRING", isActive: true },
   { id: "sport-football", name: "Football", category: "TEAM", billingMethod: "MONTHLY_RECURRING", isActive: true },
-  { id: "sport-cricket", name: "Cricket", category: "TEAM", billingMethod: "SESSION_PACK", isActive: true },
+  { id: "sport-cricket", name: "Cricket", category: "TEAM", billingMethod: "MONTHLY_RECURRING", isActive: true },
+  { id: "sport-badminton", name: "Badminton", category: "RACKET", billingMethod: "MONTHLY_RECURRING", isActive: true },
+  { id: "sport-tennis", name: "Tennis", category: "RACKET", billingMethod: "MONTHLY_RECURRING", isActive: true },
+  { id: "sport-pickleball", name: "Pickleball", category: "RACKET", billingMethod: "MONTHLY_RECURRING", isActive: true },
+  { id: "sport-table-tennis", name: "Table Tennis", category: "RACKET", billingMethod: "MONTHLY_RECURRING", isActive: true },
 ];
 
 export const MOCK_PLAYERS: AcademyPlayer[] = [
@@ -614,7 +617,17 @@ export async function admitPlayer(
       trainingGroup: payload.trainingGroup,
       photoUrl: payload.photoUrl,
       medicalNotes: payload.medicalNotes,
-      primarySport: { id: payload.primarySportId, name: payload.primarySportName || "Selected Sport" },
+      primarySport: {
+        id: payload.primarySportId,
+        name:
+          payload.primarySportName ||
+          MOCK_SPORTS.find(
+            (s) =>
+              s.id === payload.primarySportId ||
+              s.name.toLowerCase() === payload.primarySportId.toLowerCase()
+          )?.name ||
+          "Selected Sport",
+      },
       createdAt: joiningDate,
     };
     return { ok: true, player: fallbackPlayer };

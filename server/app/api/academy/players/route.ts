@@ -124,12 +124,64 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!parsed.ok) return academyError(400, "VALIDATION_ERROR", parsed.message);
     const v = parsed.value;
 
+    const APPROVED_SPORTS = [
+      "Football",
+      "Cricket",
+      "Badminton",
+      "Tennis",
+      "Pickleball",
+      "Table Tennis",
+    ];
+
     // Sports must exist, belong to this tenant, and be active.
-    const sports = await prisma.academySport.findMany({
-      where: { tenantId: ctx.tenantId, id: { in: v.sportIds }, active: true },
-      select: { id: true },
+    // Support resolution by either id or name (case-insensitive) and auto-provision approved sports if missing.
+    const existingSports = await prisma.academySport.findMany({
+      where: { tenantId: ctx.tenantId, active: true },
+      select: { id: true, name: true },
     });
-    if (sports.length !== v.sportIds.length) {
+
+    const resolvedSportIds: string[] = [];
+    for (const rawIdOrName of v.sportIds) {
+      const trimmed = rawIdOrName.trim();
+      let match = existingSports.find(
+        (s) => s.id === trimmed || s.name.toLowerCase() === trimmed.toLowerCase()
+      );
+
+      if (!match) {
+        const approvedName = APPROVED_SPORTS.find(
+          (app) => app.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (approvedName) {
+          try {
+            match = await prisma.academySport.create({
+              data: {
+                tenantId: ctx.tenantId,
+                name: approvedName,
+                active: true,
+                defaultBillingMethod: "FIXED",
+              },
+              select: { id: true, name: true },
+            });
+            existingSports.push(match);
+          } catch {
+            const found = await prisma.academySport.findFirst({
+              where: {
+                tenantId: ctx.tenantId,
+                name: { equals: approvedName, mode: "insensitive" },
+              },
+              select: { id: true, name: true },
+            });
+            if (found) match = found;
+          }
+        }
+      }
+
+      if (match && !resolvedSportIds.includes(match.id)) {
+        resolvedSportIds.push(match.id);
+      }
+    }
+
+    if (resolvedSportIds.length === 0) {
       return academyError(400, "VALIDATION_ERROR", "One or more selected sports are invalid or inactive");
     }
 
@@ -180,7 +232,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             photoKey: v.photoUrl || (body as any)?.photoKey || null,
             status: v.status,
             createdBy: ctx.userId,
-            sports: { create: v.sportIds.map((sportId) => ({ sportId })) },
+            sports: { create: resolvedSportIds.map((sportId) => ({ sportId })) },
           },
         });
 
@@ -191,7 +243,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           entityType: "academy_player",
           entityId: player.id,
           summary: `Admitted ${player.name} (${player.playerCode})`,
-          after: { playerCode, name: v.name, sportIds: v.sportIds, status: v.status },
+          after: { playerCode, name: v.name, sportIds: resolvedSportIds, status: v.status },
           operationId,
         });
         return player;

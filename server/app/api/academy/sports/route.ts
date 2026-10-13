@@ -15,10 +15,45 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { tenantId } = auth.ctx;
     const includeInactive = new URL(request.url).searchParams.get("includeInactive") === "1";
 
-    const rows = await prisma.academySport.findMany({
+    const APPROVED_SPORTS = [
+      "Football",
+      "Cricket",
+      "Badminton",
+      "Tennis",
+      "Pickleball",
+      "Table Tennis",
+    ];
+
+    let rows = await prisma.academySport.findMany({
       where: { tenantId, ...(includeInactive ? {} : { active: true }) },
       orderBy: { name: "asc" },
     });
+
+    const existingNames = new Set(rows.map((r) => r.name.toLowerCase()));
+    const missingSports = APPROVED_SPORTS.filter((s) => !existingNames.has(s.toLowerCase()));
+
+    if (missingSports.length > 0) {
+      for (const name of missingSports) {
+        try {
+          await prisma.academySport.upsert({
+            where: { tenantId_name: { tenantId, name } },
+            create: {
+              tenantId,
+              name,
+              active: true,
+              defaultBillingMethod: "FIXED",
+            },
+            update: { active: true },
+          });
+        } catch {
+          // ignore concurrent collision
+        }
+      }
+      rows = await prisma.academySport.findMany({
+        where: { tenantId, ...(includeInactive ? {} : { active: true }) },
+        orderBy: { name: "asc" },
+      });
+    }
     return NextResponse.json({
       ok: true,
       data: rows.map((s) => ({
