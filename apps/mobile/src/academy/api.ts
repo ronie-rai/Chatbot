@@ -233,9 +233,13 @@ export interface AcademySession {
 export interface AcademyAttendanceRecord {
   id: string;
   sessionId: string;
+  sessionDate?: string;
+  sessionTime?: string;
   playerId: string;
   status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
   notes?: string | null;
+  markedBy?: string | null;
+  createdAt?: string;
   player?: AcademyPlayer;
 }
 
@@ -831,11 +835,266 @@ export async function fetchSessionAttendance(sessionId: string): Promise<Academy
   }
 }
 
+// ─── Attendance Store & Report Service ──────────────────────────────────────
+
+export const MOCK_ATTENDANCE_STORE: AcademyAttendanceRecord[] = [
+  // Today (2026-10-14)
+  {
+    id: "att-today-001",
+    sessionId: "sess-daily-today",
+    sessionDate: "2026-10-14",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-001",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-10-14T06:30:00Z",
+    player: MOCK_PLAYERS[0],
+  },
+  {
+    id: "att-today-002",
+    sessionId: "sess-daily-today",
+    sessionDate: "2026-10-14",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-002",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-10-14T06:30:00Z",
+    player: MOCK_PLAYERS[1],
+  },
+  {
+    id: "att-today-003",
+    sessionId: "sess-daily-today",
+    sessionDate: "2026-10-14",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-003",
+    status: "LATE",
+    notes: "Venue: OFA-2 • Sport: Football • Arrived 15 mins late",
+    markedBy: "Coach Zahid",
+    createdAt: "2026-10-14T06:30:00Z",
+    player: MOCK_PLAYERS[2],
+  },
+  // Yesterday (2026-10-13)
+  {
+    id: "att-yest-001",
+    sessionId: "sess-daily-yest",
+    sessionDate: "2026-10-13",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-001",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-10-13T06:30:00Z",
+    player: MOCK_PLAYERS[0],
+  },
+  {
+    id: "att-yest-002",
+    sessionId: "sess-daily-yest",
+    sessionDate: "2026-10-13",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-002",
+    status: "ABSENT",
+    notes: "Venue: OFA-1 • Sport: Badminton • Unexcused",
+    markedBy: "Head Coach",
+    createdAt: "2026-10-13T06:30:00Z",
+    player: MOCK_PLAYERS[1],
+  },
+  {
+    id: "att-yest-003",
+    sessionId: "sess-daily-yest",
+    sessionDate: "2026-10-13",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-003",
+    status: "PRESENT",
+    notes: "Venue: OFA-2 • Sport: Football",
+    markedBy: "Coach Zahid",
+    createdAt: "2026-10-13T06:30:00Z",
+    player: MOCK_PLAYERS[2],
+  },
+  // This Week (2026-10-12)
+  {
+    id: "att-wk-001",
+    sessionId: "sess-daily-1012",
+    sessionDate: "2026-10-12",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-001",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Staff",
+    createdAt: "2026-10-12T06:30:00Z",
+    player: MOCK_PLAYERS[0],
+  },
+  {
+    id: "att-wk-002",
+    sessionId: "sess-daily-1012",
+    sessionDate: "2026-10-12",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-002",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Staff",
+    createdAt: "2026-10-12T06:30:00Z",
+    player: MOCK_PLAYERS[1],
+  },
+  {
+    id: "att-wk-003",
+    sessionId: "sess-daily-1012",
+    sessionDate: "2026-10-12",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-003",
+    status: "PRESENT",
+    notes: "Venue: OFA-2 • Sport: Football",
+    markedBy: "Staff",
+    createdAt: "2026-10-12T06:30:00Z",
+    player: MOCK_PLAYERS[2],
+  },
+  // This Month (2026-10-06)
+  {
+    id: "att-mth-001",
+    sessionId: "sess-daily-1006",
+    sessionDate: "2026-10-06",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-001",
+    status: "LATE",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-10-06T06:30:00Z",
+    player: MOCK_PLAYERS[0],
+  },
+  {
+    id: "att-mth-002",
+    sessionId: "sess-daily-1006",
+    sessionDate: "2026-10-06",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-002",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-10-06T06:30:00Z",
+    player: MOCK_PLAYERS[1],
+  },
+  {
+    id: "att-mth-003",
+    sessionId: "sess-daily-1006",
+    sessionDate: "2026-10-06",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-003",
+    status: "EXCUSED",
+    notes: "Venue: OFA-2 • Sport: Football • School exams",
+    markedBy: "Coach Zahid",
+    createdAt: "2026-10-06T06:30:00Z",
+    player: MOCK_PLAYERS[2],
+  },
+  // Last Month (2026-09-22)
+  {
+    id: "att-lm-001",
+    sessionId: "sess-daily-0922",
+    sessionDate: "2026-09-22",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-001",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-09-22T06:30:00Z",
+    player: MOCK_PLAYERS[0],
+  },
+  {
+    id: "att-lm-002",
+    sessionId: "sess-daily-0922",
+    sessionDate: "2026-09-22",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-002",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-09-22T06:30:00Z",
+    player: MOCK_PLAYERS[1],
+  },
+  {
+    id: "att-lm-003",
+    sessionId: "sess-daily-0922",
+    sessionDate: "2026-09-22",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-003",
+    status: "ABSENT",
+    notes: "Venue: OFA-2 • Sport: Football",
+    markedBy: "Coach Zahid",
+    createdAt: "2026-09-22T06:30:00Z",
+    player: MOCK_PLAYERS[2],
+  },
+  // Last Month (2026-09-15)
+  {
+    id: "att-lm-004",
+    sessionId: "sess-daily-0915",
+    sessionDate: "2026-09-15",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-001",
+    status: "PRESENT",
+    notes: "Venue: OFA-1 • Sport: Badminton",
+    markedBy: "Head Coach",
+    createdAt: "2026-09-15T06:30:00Z",
+    player: MOCK_PLAYERS[0],
+  },
+  {
+    id: "att-lm-005",
+    sessionId: "sess-daily-0915",
+    sessionDate: "2026-09-15",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-002",
+    status: "EXCUSED",
+    notes: "Venue: OFA-1 • Sport: Badminton • Medical leave",
+    markedBy: "Head Coach",
+    createdAt: "2026-09-15T06:30:00Z",
+    player: MOCK_PLAYERS[1],
+  },
+  {
+    id: "att-lm-006",
+    sessionId: "sess-daily-0915",
+    sessionDate: "2026-09-15",
+    sessionTime: "06:00 - 08:00 AM",
+    playerId: "ply-003",
+    status: "PRESENT",
+    notes: "Venue: OFA-2 • Sport: Football",
+    markedBy: "Coach Zahid",
+    createdAt: "2026-09-15T06:30:00Z",
+    player: MOCK_PLAYERS[2],
+  },
+];
+
 export async function markAttendance(payload: {
   sessionId: string;
   records: { playerId: string; status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED"; notes?: string }[];
   opId: string;
+  date?: string;
 }): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const recDate = payload.date || new Date().toISOString().slice(0, 10);
+  
+  // Always update in-memory / local store so Attendance Report displays immediately
+  payload.records.forEach((r) => {
+    const pl = MOCK_PLAYERS.find((p) => p.id === r.playerId);
+    const existingIdx = MOCK_ATTENDANCE_STORE.findIndex(
+      (m) => m.playerId === r.playerId && m.sessionDate === recDate
+    );
+    const record: AcademyAttendanceRecord = {
+      id: `att-${recDate}-${r.playerId}`,
+      sessionId: payload.sessionId,
+      sessionDate: recDate,
+      sessionTime: "06:00 - 08:00 AM",
+      playerId: r.playerId,
+      status: r.status,
+      notes: r.notes || null,
+      markedBy: "Staff / Coach",
+      createdAt: new Date().toISOString(),
+      player: pl,
+    };
+    if (existingIdx >= 0) {
+      MOCK_ATTENDANCE_STORE[existingIdx] = record;
+    } else {
+      MOCK_ATTENDANCE_STORE.unshift(record);
+    }
+  });
+
   if (!userToken) return { ok: true, count: payload.records.length };
   try {
     const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/attendance`, {
@@ -851,6 +1110,82 @@ export async function markAttendance(payload: {
     return { ok: true, count: json.data?.count ?? payload.records.length };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : "Network error" };
+  }
+}
+
+export async function fetchAttendanceReport(params?: {
+  from?: string;
+  to?: string;
+  playerId?: string;
+  status?: string;
+}): Promise<AcademyAttendanceRecord[]> {
+  const filterMock = () => {
+    let filtered = [...MOCK_ATTENDANCE_STORE];
+    if (params?.playerId && params.playerId !== "ALL") {
+      filtered = filtered.filter((r) => r.playerId === params.playerId);
+    }
+    if (params?.status && params.status !== "ALL") {
+      filtered = filtered.filter((r) => r.status === params.status);
+    }
+    if (params?.from) {
+      filtered = filtered.filter((r) => !r.sessionDate || r.sessionDate >= params.from!);
+    }
+    if (params?.to) {
+      filtered = filtered.filter((r) => !r.sessionDate || r.sessionDate <= params.to!);
+    }
+    return filtered.sort((a, b) => (b.sessionDate || "").localeCompare(a.sessionDate || ""));
+  };
+
+  if (!userToken) {
+    return filterMock();
+  }
+
+  try {
+    const qs = new URLSearchParams();
+    if (params?.playerId && params.playerId !== "ALL") qs.set("playerId", params.playerId);
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    qs.set("limit", "150");
+
+    const res = await fetch(`${getEffectiveBaseUrl()}/api/academy/attendance?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+    });
+    const json = (await res.json()) as any;
+    const rawList: any[] =
+      json?.data?.items ??
+      json?.data?.attendance ??
+      (Array.isArray(json?.data) ? json.data : null) ??
+      [];
+
+    if (!rawList || rawList.length === 0) {
+      return filterMock();
+    }
+
+    return rawList.map((a: any) => ({
+      id: a.id,
+      sessionId: a.sessionId,
+      sessionDate: a.sessionDate || a.session?.date?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      sessionTime: a.sessionTime || `${a.session?.startTime || "06:00"} - ${a.session?.endTime || "08:00"}`,
+      playerId: a.playerId || a.player?.id,
+      status: a.status || "PRESENT",
+      notes: a.notes || null,
+      markedBy: a.markedBy || "Coach",
+      createdAt: a.createdAt || new Date().toISOString(),
+      player: a.player
+        ? {
+            id: a.player.id,
+            playerCode: a.player.playerCode || "OFA-*",
+            fullName: a.player.name || a.player.fullName || "Academy Player",
+            dateOfBirth: a.player.dateOfBirth || "2012-01-01",
+            gender: a.player.gender || "MALE",
+            status: a.player.status || "ACTIVE",
+            guardianName: a.player.guardianName || "Guardian",
+            guardianPhone: a.player.guardianPhone || a.player.mobileNumber || "",
+          }
+        : undefined,
+    }));
+  } catch {
+    return filterMock();
   }
 }
 

@@ -37,6 +37,7 @@ import {
   fetchInvoices,
   fetchPlayers,
   fetchSports,
+  fetchAttendanceReport,
   markAttendance,
   recordPayment,
   uploadPhoto,
@@ -45,6 +46,7 @@ import {
   MOCK_INVOICES,
   type AcademyAnnouncement,
   type AcademyAssessment,
+  type AcademyAttendanceRecord,
   type AcademyBatch,
   type AcademyBooking,
   type AcademyFacility,
@@ -100,12 +102,47 @@ type RibbonTab =
   | "sports"
   | "submissions";
 
+export const computePresetRange = (
+  preset: "today" | "yesterday" | "this_week" | "this_month" | "last_month"
+) => {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  if (preset === "today") {
+    return { from: todayStr, to: todayStr };
+  }
+  if (preset === "yesterday") {
+    const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yStr = y.toISOString().slice(0, 10);
+    return { from: yStr, to: yStr };
+  }
+  if (preset === "this_week") {
+    const d = new Date(now);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    return { from: monday.toISOString().slice(0, 10), to: todayStr };
+  }
+  if (preset === "this_month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: start.toISOString().slice(0, 10), to: todayStr };
+  }
+  if (preset === "last_month") {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
+  }
+  return { from: todayStr, to: todayStr };
+};
+
 export function DashboardScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<RibbonTab>(() => {
     const init = route.params?.initialTab as string;
     if (init === "record_payment") return "finance";
     if (init === "growth" || init === "announcements") return "overview";
+    if (init === "new_booking") return "bookings";
+    if (init === "new_admission") return "players";
     return (init as RibbonTab) || "overview";
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => Dimensions.get("window").width < 768);
@@ -122,7 +159,7 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [batches, setBatches] = useState<AcademyBatch[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
 
-  // Attendance Roster State
+  // Attendance Roster State (Feature 1: Mark Attendance)
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [attendanceStatusMap, setAttendanceStatusMap] = useState<Record<string, "PRESENT" | "ABSENT" | "LATE" | "EXCUSED">>({});
   const [attendanceSportFilter, setAttendanceSportFilter] = useState<string>("ALL");
@@ -130,6 +167,19 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [attendanceSearch, setAttendanceSearch] = useState<string>("");
   const [submittingAttendance, setSubmittingAttendance] = useState<boolean>(false);
   const [attendanceNotice, setAttendanceNotice] = useState<string | null>(null);
+
+  // Attendance Feature 1 & 2 State (Mark vs Report)
+  const [attendanceMode, setAttendanceMode] = useState<"mark" | "report">("mark");
+  const [reportDatePreset, setReportDatePreset] = useState<
+    "today" | "yesterday" | "this_week" | "this_month" | "last_month" | "custom"
+  >("this_month");
+  const [reportFromDate, setReportFromDate] = useState(() => computePresetRange("this_month").from);
+  const [reportToDate, setReportToDate] = useState(() => computePresetRange("this_month").to);
+  const [reportStudentFilter, setReportStudentFilter] = useState<string>("ALL");
+  const [reportStatusFilter, setReportStatusFilter] = useState<string>("ALL");
+  const [reportSearch, setReportSearch] = useState<string>("");
+  const [attendanceReportRecords, setAttendanceReportRecords] = useState<AcademyAttendanceRecord[]>([]);
+  const [loadingReport, setLoadingReport] = useState<boolean>(false);
 
   // Search & Filters per view
   const [searchQuery, setSearchQuery] = useState("");
@@ -221,6 +271,7 @@ export function DashboardScreen({ navigation, route }: Props) {
         bData,
         iData,
         btData,
+        attData,
         dashData,
       ] = await Promise.all([
         fetchPlayers(),
@@ -229,6 +280,7 @@ export function DashboardScreen({ navigation, route }: Props) {
         fetchBookings(),
         fetchInvoices(),
         fetchBatches(),
+        fetchAttendanceReport({ from: computePresetRange("this_month").from, to: computePresetRange("this_month").to }).catch(() => []),
         getDashboardData({ tenantId: MOCK_CURRENT_USER.tenantId }).catch(() => null),
       ]);
 
@@ -238,6 +290,7 @@ export function DashboardScreen({ navigation, route }: Props) {
       setBookings((bData && bData.length > 0) ? bData : MOCK_BOOKINGS);
       setInvoices((iData && iData.length > 0) ? iData : MOCK_INVOICES);
       setBatches(btData || []);
+      setAttendanceReportRecords(attData || []);
       if (dashData?.data?.submissions) {
         setSubmissions(dashData.data.submissions);
       }
@@ -647,6 +700,42 @@ export function DashboardScreen({ navigation, route }: Props) {
     }
   };
 
+  const setAttendanceDateToday = () => {
+    setAttendanceDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const loadAttendanceReport = useCallback(
+    async (from?: string, to?: string, studentId?: string, status?: string) => {
+      setLoadingReport(true);
+      try {
+        const records = await fetchAttendanceReport({
+          from: from ?? reportFromDate,
+          to: to ?? reportToDate,
+          playerId: (studentId ?? reportStudentFilter) !== "ALL" ? (studentId ?? reportStudentFilter) : undefined,
+          status: (status ?? reportStatusFilter) !== "ALL" ? (status ?? reportStatusFilter) : undefined,
+        });
+        setAttendanceReportRecords(records);
+      } catch {
+        // fallback
+      } finally {
+        setLoadingReport(false);
+      }
+    },
+    [reportFromDate, reportToDate, reportStudentFilter, reportStatusFilter]
+  );
+
+  const handleSelectPreset = (
+    preset: "today" | "yesterday" | "this_week" | "this_month" | "last_month" | "custom"
+  ) => {
+    setReportDatePreset(preset);
+    if (preset !== "custom") {
+      const range = computePresetRange(preset);
+      setReportFromDate(range.from);
+      setReportToDate(range.to);
+      loadAttendanceReport(range.from, range.to, reportStudentFilter, reportStatusFilter);
+    }
+  };
+
   const filteredAttendancePlayers = useMemo(() => {
     return players.filter((p) => {
       if (attendanceSportFilter !== "ALL") {
@@ -726,24 +815,69 @@ export function DashboardScreen({ navigation, route }: Props) {
         sessionId: "daily-attendance",
         records,
         opId: `att-${Date.now()}`,
+        date: attendanceDate,
       });
 
       if (res.ok) {
-        setAttendanceNotice(`✅ Attendance recorded for ${records.length} students & synced to Google Sheets!`);
+        setAttendanceNotice(`✅ Attendance recorded for ${records.length} students on ${attendanceDate} & synced to Google Sheets!`);
         Alert.alert(
           "Attendance Saved",
           `Successfully saved attendance for ${records.length} admitted students on ${attendanceDate} and synced to Google Sheets!`
         );
         setTimeout(() => setAttendanceNotice(null), 5000);
+        loadAttendanceReport(reportFromDate, reportToDate, reportStudentFilter, reportStatusFilter);
       } else {
-        Alert.alert("Attendance Recorded", `Recorded attendance for ${records.length} students.`);
+        Alert.alert("Attendance Recorded", `Recorded attendance for ${records.length} students on ${attendanceDate}.`);
+        loadAttendanceReport(reportFromDate, reportToDate, reportStudentFilter, reportStatusFilter);
       }
     } catch {
-      Alert.alert("Attendance Saved", `Recorded attendance for ${filteredAttendancePlayers.length} students.`);
+      Alert.alert("Attendance Saved", `Recorded attendance for ${filteredAttendancePlayers.length} students on ${attendanceDate}.`);
+      loadAttendanceReport(reportFromDate, reportToDate, reportStudentFilter, reportStatusFilter);
     } finally {
       setSubmittingAttendance(false);
     }
   };
+
+  // ─── Filtered Attendance Report & Analytics (Feature 2) ─────────────────────
+  const filteredReportRecords = useMemo(() => {
+    return attendanceReportRecords.filter((rec) => {
+      // Student filter
+      if (reportStudentFilter !== "ALL" && rec.playerId !== reportStudentFilter) {
+        return false;
+      }
+      // Status filter
+      if (reportStatusFilter !== "ALL" && rec.status !== reportStatusFilter) {
+        return false;
+      }
+      // Date range filter
+      if (reportFromDate && rec.sessionDate && rec.sessionDate < reportFromDate) {
+        return false;
+      }
+      if (reportToDate && rec.sessionDate && rec.sessionDate > reportToDate) {
+        return false;
+      }
+      // Keyword search
+      if (reportSearch.trim()) {
+        const q = reportSearch.toLowerCase();
+        const pName = rec.player?.fullName?.toLowerCase() || "";
+        const pCode = rec.player?.playerCode?.toLowerCase() || "";
+        const notes = rec.notes?.toLowerCase() || "";
+        const pPhone = rec.player?.guardianPhone?.toLowerCase() || rec.player?.mobileNumber?.toLowerCase() || "";
+        return pName.includes(q) || pCode.includes(q) || notes.includes(q) || pPhone.includes(q);
+      }
+      return true;
+    });
+  }, [attendanceReportRecords, reportStudentFilter, reportStatusFilter, reportFromDate, reportToDate, reportSearch]);
+
+  const reportMetrics = useMemo(() => {
+    const total = filteredReportRecords.length;
+    const present = filteredReportRecords.filter((r) => r.status === "PRESENT").length;
+    const absent = filteredReportRecords.filter((r) => r.status === "ABSENT").length;
+    const late = filteredReportRecords.filter((r) => r.status === "LATE").length;
+    const excused = filteredReportRecords.filter((r) => r.status === "EXCUSED").length;
+    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+    return { total, present, absent, late, excused, rate };
+  }, [filteredReportRecords]);
 
   // ─── Clickable Phone Dialer Integration ──────────────────────────────────────
   const handleDialPhone = useCallback((phone?: string | null) => {
@@ -1267,24 +1401,17 @@ export function DashboardScreen({ navigation, route }: Props) {
   // ─── Ribbon Sidebar Render ──────────────────────────────────────────────────
 
   const renderSidebar = () => {
-    const navItems = [
+    interface NavItem {
+      id: string;
+      label: string;
+      icon: string;
+      badge: string;
+      isAction?: () => void;
+    }
+    const navItems: NavItem[] = [
       { id: "overview", label: "Executive Hub", icon: "📊", badge: "Live" },
       { id: "bookings", label: "Courts & Bookings", icon: "📅", badge: String(bookings.length) },
-      {
-        id: "new_booking",
-        label: "+ New Booking",
-        icon: "➕",
-        badge: "Form",
-        isAction: () => setIsNewBookingModalOpen(true),
-      },
-      { id: "players", label: "Players Directory", icon: "👥", badge: String(players.length) },
-      {
-        id: "new_admission",
-        label: "+ Admit Player",
-        icon: "📝",
-        badge: "Form",
-        isAction: () => setIsAdmitPlayerModalOpen(true),
-      },
+      { id: "players", label: "Players", icon: "👥", badge: String(players.length) },
       { id: "finance", label: "Fees & Payments", icon: "💰", badge: String(invoices.length) },
       { id: "consumables", label: "Consumables Table", icon: "📦", badge: String(ACADEMY_CONSUMABLES.length) },
       { id: "attendance", label: "Attendance Sheet", icon: "⏱️", badge: `${players.length} Students` },
@@ -1616,10 +1743,11 @@ export function DashboardScreen({ navigation, route }: Props) {
               <Text style={styles.stageTitle} numberOfLines={1} ellipsizeMode="tail">
                 {activeTab === "overview" && "📊 Executive Operations Hub"}
                 {activeTab === "bookings" && "📅 Courts & Facility Bookings"}
-                {activeTab === "players" && "👥 Players Directory & Admissions"}
+                {activeTab === "players" && "👥 Players"}
                 {activeTab === "finance" && "💰 Fees, Payments & Invoices"}
                 {activeTab === "consumables" && "📦 Consumables & Equipment Catalog"}
-                {activeTab === "attendance" && "⏱️ Daily Attendance Roster"}
+                {activeTab === "attendance" &&
+                  (attendanceMode === "mark" ? "⏱️ Mark Attendance" : "📊 Attendance Report")}
                 {activeTab === "sports" && "🏅 Sports Disciplines & Batches"}
                 {activeTab === "submissions" && "🤖 Bot Submissions Archive"}
               </Text>
@@ -2021,265 +2149,695 @@ export function DashboardScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              {/* ── TAB 5: DAILY ATTENDANCE ROSTER (ALL ADMITTED STUDENTS) ─────────── */}
+              {/* ── TAB 5: ATTENDANCE SHEET (MARK ATTENDANCE & ATTENDANCE REPORT) ─────────── */}
               {activeTab === "attendance" && (
                 <View style={styles.attCard}>
-                  {/* Top Header Row with Date, Controls & Direct Save */}
-                  <View style={styles.attHeaderRow}>
-                    <View style={{ flex: 1, minWidth: 180 }}>
-                      <Text style={styles.attTitle}>⏱️ Daily Attendance Roster</Text>
-                      <Text style={styles.attSub}>
-                        Mark student attendance and sync directly to Google Sheets
-                      </Text>
-                    </View>
-
-                    {/* Date Selector & Shift Controls */}
-                    <View style={styles.attDatePill}>
-                      <TouchableOpacity onPress={() => shiftAttendanceDate(-1)} activeOpacity={0.6}>
-                        <Text style={styles.attDateArrow}>◀</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.attDateText}>📅 {attendanceDate}</Text>
-                      <TouchableOpacity onPress={() => shiftAttendanceDate(1)} activeOpacity={0.6}>
-                        <Text style={styles.attDateArrow}>▶</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Primary Save & Sync Action */}
+                  {/* Mode Selector Toggle: Mark Attendance vs Attendance Report */}
+                  <View style={styles.attModeToggleRow}>
                     <TouchableOpacity
-                      style={styles.attSavePrimaryBtn}
-                      onPress={handleSaveAttendance}
-                      disabled={submittingAttendance}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.attSavePrimaryBtnText}>
-                        {submittingAttendance ? "Saving..." : `💾 Save & Sync (${attendanceCounts.present} Present)`}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Real-time Notice Banner */}
-                  {attendanceNotice && (
-                    <View style={styles.attNoticeBanner}>
-                      <Text style={styles.attNoticeText}>{attendanceNotice}</Text>
-                    </View>
-                  )}
-
-                  {/* Live KPI Metric Cards */}
-                  <View style={styles.attKpiRow}>
-                    <View style={styles.attKpiCard}>
-                      <Text style={styles.attKpiVal}>{attendanceCounts.total}</Text>
-                      <Text style={styles.attKpiLbl}>Total Admitted</Text>
-                    </View>
-                    <View style={[styles.attKpiCard, { borderColor: "rgba(16, 185, 129, 0.4)" }]}>
-                      <Text style={[styles.attKpiVal, { color: "#10B981" }]}>{attendanceCounts.present}</Text>
-                      <Text style={styles.attKpiLbl}>Present</Text>
-                    </View>
-                    <View style={[styles.attKpiCard, { borderColor: "rgba(239, 68, 68, 0.4)" }]}>
-                      <Text style={[styles.attKpiVal, { color: "#EF4444" }]}>{attendanceCounts.absent}</Text>
-                      <Text style={styles.attKpiLbl}>Absent</Text>
-                    </View>
-                    <View style={[styles.attKpiCard, { borderColor: "rgba(245, 158, 11, 0.4)" }]}>
-                      <Text style={[styles.attKpiVal, { color: "#F59E0B" }]}>{attendanceCounts.late}</Text>
-                      <Text style={styles.attKpiLbl}>Late</Text>
-                    </View>
-                  </View>
-
-                  {/* Batch Controls & Filter Toolbar */}
-                  <View style={styles.attBatchActionRow}>
-                    <TouchableOpacity
-                      style={styles.attBatchBtn}
-                      onPress={() => setAllAttendance("PRESENT")}
+                      style={[
+                        styles.attModeToggleBtn,
+                        attendanceMode === "mark" && styles.attModeToggleBtnActive,
+                      ]}
+                      onPress={() => setAttendanceMode("mark")}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.attBatchBtnText, { color: "#10B981" }]}>✓ All Present</Text>
+                      <Text
+                        style={[
+                          styles.attModeToggleText,
+                          attendanceMode === "mark" && styles.attModeToggleTextActive,
+                        ]}
+                      >
+                        📝 Mark Attendance
+                      </Text>
                     </TouchableOpacity>
+
                     <TouchableOpacity
-                      style={styles.attBatchBtn}
-                      onPress={() => setAllAttendance("ABSENT")}
+                      style={[
+                        styles.attModeToggleBtn,
+                        attendanceMode === "report" && styles.attModeToggleBtnActive,
+                      ]}
+                      onPress={() => {
+                        setAttendanceMode("report");
+                        loadAttendanceReport();
+                      }}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.attBatchBtnText, { color: "#EF4444" }]}>✕ All Absent</Text>
+                      <Text
+                        style={[
+                          styles.attModeToggleText,
+                          attendanceMode === "report" && styles.attModeToggleTextActive,
+                        ]}
+                      >
+                        📊 Attendance Report & History
+                      </Text>
                     </TouchableOpacity>
                   </View>
 
-                  {/* Search and Filters */}
-                  <View style={styles.filterControlBar}>
-                    <TextInput
-                      style={styles.searchBarInput}
-                      placeholder="Search admitted students by name or ID..."
-                      placeholderTextColor="#64748B"
-                      value={attendanceSearch}
-                      onChangeText={setAttendanceSearch}
-                    />
+                  {/* ───────────────────────────────────────────────────────────────── */}
+                  {/* FEATURE 1: MARK ATTENDANCE FOR PARTICULAR DATE                    */}
+                  {/* ───────────────────────────────────────────────────────────────── */}
+                  {attendanceMode === "mark" && (
+                    <>
+                      {/* Top Header Row with Particular Date Controls & Direct Save */}
+                      <View style={styles.attHeaderRow}>
+                        <View style={{ flex: 1, minWidth: 180 }}>
+                          <Text style={styles.attTitle}>⏱️ Mark Student Attendance</Text>
+                          <Text style={styles.attSub}>
+                            Select a particular date, mark present/absent & sync to Google Sheets
+                          </Text>
+                        </View>
 
-                    {/* Venue Filters */}
-                    <View style={styles.filterChipsRow}>
-                      {["ALL", "OFA-1", "OFA-2", "OFA-3"].map((v) => (
-                        <TouchableOpacity
-                          key={v}
-                          style={[
-                            styles.filterChip,
-                            attendanceVenueFilter === v && styles.filterChipActive,
-                          ]}
-                          onPress={() => setAttendanceVenueFilter(v)}
-                        >
-                          <Text
-                            style={[
-                              styles.filterChipText,
-                              attendanceVenueFilter === v && styles.filterChipTextActive,
-                            ]}
+                        {/* Particular Date Selector & Shift Controls */}
+                        <View style={styles.attDateSelectorWrap}>
+                          <View style={styles.attDatePill}>
+                            <TouchableOpacity onPress={() => shiftAttendanceDate(-1)} activeOpacity={0.6}>
+                              <Text style={styles.attDateArrow}>◀</Text>
+                            </TouchableOpacity>
+                            <TextInput
+                              style={styles.attDateInput}
+                              value={attendanceDate}
+                              onChangeText={setAttendanceDate}
+                              placeholder="YYYY-MM-DD"
+                              placeholderTextColor="#64748B"
+                              maxLength={10}
+                            />
+                            <TouchableOpacity onPress={() => shiftAttendanceDate(1)} activeOpacity={0.6}>
+                              <Text style={styles.attDateArrow}>▶</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.attTodayBtn}
+                            onPress={setAttendanceDateToday}
+                            activeOpacity={0.7}
                           >
-                            {v}
+                            <Text style={styles.attTodayBtnText}>Today</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Primary Save & Sync Action */}
+                        <TouchableOpacity
+                          style={styles.attSavePrimaryBtn}
+                          onPress={handleSaveAttendance}
+                          disabled={submittingAttendance}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.attSavePrimaryBtnText}>
+                            {submittingAttendance
+                              ? "Saving..."
+                              : `💾 Save & Sync (${attendanceCounts.present} Present)`}
                           </Text>
                         </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
+                      </View>
 
-                  {/* Students Roster List */}
-                  {filteredAttendancePlayers.length === 0 ? (
-                    <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                      <Text style={{ fontSize: 32, marginBottom: 8 }}>👥</Text>
-                      <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
-                        {players.length === 0
-                          ? "No Admitted Students Found"
-                          : "No students matching current filters"}
-                      </Text>
-                      <Text style={{ color: "#94A3B8", fontSize: 12, marginTop: 4, textAlign: "center" }}>
-                        {players.length === 0
-                          ? "Register new players using '+ Admit Player' to begin tracking attendance."
-                          : "Try resetting your search query or venue filters above."}
-                      </Text>
-                      {players.length === 0 && (
-                        <TouchableOpacity
-                          style={[styles.primaryActionBtn, { marginTop: 14 }]}
-                          onPress={() => setIsAdmitPlayerModalOpen(true)}
-                        >
-                          <Text style={styles.primaryActionBtnText}>+ Admit Player Now</Text>
-                        </TouchableOpacity>
+                      {/* Real-time Notice Banner */}
+                      {attendanceNotice && (
+                        <View style={styles.attNoticeBanner}>
+                          <Text style={styles.attNoticeText}>{attendanceNotice}</Text>
+                        </View>
                       )}
-                    </View>
-                  ) : (
-                    filteredAttendancePlayers.map((player) => {
-                      const curStatus = attendanceStatusMap[player.id] || "PRESENT";
-                      return (
-                        <View key={player.id} style={styles.attPlayerItem}>
-                          <View style={styles.attPlayerLeft}>
-                            <View style={styles.attPlayerAvatar}>
-                              <Text style={styles.attPlayerAvatarText}>
-                                {player.fullName.slice(0, 1).toUpperCase()}
+
+                      {/* Live KPI Metric Cards for Selected Date */}
+                      <View style={styles.attKpiRow}>
+                        <View style={styles.attKpiCard}>
+                          <Text style={styles.attKpiVal}>{attendanceCounts.total}</Text>
+                          <Text style={styles.attKpiLbl}>Total Admitted</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(16, 185, 129, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#10B981" }]}>
+                            {attendanceCounts.present}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Present</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(239, 68, 68, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#EF4444" }]}>
+                            {attendanceCounts.absent}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Absent</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(245, 158, 11, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#F59E0B" }]}>
+                            {attendanceCounts.late}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Late</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(99, 102, 241, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#818CF8" }]}>
+                            {attendanceCounts.excused}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Excused</Text>
+                        </View>
+                      </View>
+
+                      {/* Batch Controls & Filter Toolbar */}
+                      <View style={styles.attBatchActionRow}>
+                        <TouchableOpacity
+                          style={styles.attBatchBtn}
+                          onPress={() => setAllAttendance("PRESENT")}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.attBatchBtnText, { color: "#10B981" }]}>✓ All Present</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.attBatchBtn}
+                          onPress={() => setAllAttendance("ABSENT")}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.attBatchBtnText, { color: "#EF4444" }]}>✕ All Absent</Text>
+                        </TouchableOpacity>
+                        <View style={{ flex: 1 }} />
+                        <Text style={{ color: "#94A3B8", fontSize: 12, alignSelf: "center" }}>
+                          Marking for: <Text style={{ color: "#38BDF8", fontWeight: "700" }}>{attendanceDate}</Text>
+                        </Text>
+                      </View>
+
+                      {/* Search and Venue Filters */}
+                      <View style={styles.filterControlBar}>
+                        <TextInput
+                          style={styles.searchBarInput}
+                          placeholder="Search admitted students by name or ID..."
+                          placeholderTextColor="#64748B"
+                          value={attendanceSearch}
+                          onChangeText={setAttendanceSearch}
+                        />
+
+                        {/* Venue Filters */}
+                        <View style={styles.filterChipsRow}>
+                          {["ALL", "OFA-1", "OFA-2", "OFA-3"].map((v) => (
+                            <TouchableOpacity
+                              key={v}
+                              style={[
+                                styles.filterChip,
+                                attendanceVenueFilter === v && styles.filterChipActive,
+                              ]}
+                              onPress={() => setAttendanceVenueFilter(v)}
+                            >
+                              <Text
+                                style={[
+                                  styles.filterChipText,
+                                  attendanceVenueFilter === v && styles.filterChipTextActive,
+                                ]}
+                              >
+                                {v}
                               </Text>
-                            </View>
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={styles.attPlayerName} numberOfLines={1}>
-                                {player.fullName}
-                              </Text>
-                              <View style={styles.attPlayerMetaRow}>
-                                <View style={styles.attPlayerCodeBadge}>
-                                  <Text style={styles.attPlayerCodeText}>{player.playerCode}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+
+                      {/* Students Roster List */}
+                      {filteredAttendancePlayers.length === 0 ? (
+                        <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                          <Text style={{ fontSize: 32, marginBottom: 8 }}>👥</Text>
+                          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
+                            {players.length === 0
+                              ? "No Admitted Students Found"
+                              : "No students matching current filters"}
+                          </Text>
+                          <Text style={{ color: "#94A3B8", fontSize: 12, marginTop: 4, textAlign: "center" }}>
+                            {players.length === 0
+                              ? "Register new players using '+ Admit Player' to begin tracking attendance."
+                              : "Try resetting your search query or venue filters above."}
+                          </Text>
+                          {players.length === 0 && (
+                            <TouchableOpacity
+                              style={[styles.primaryActionBtn, { marginTop: 14 }]}
+                              onPress={() => setIsAdmitPlayerModalOpen(true)}
+                            >
+                              <Text style={styles.primaryActionBtnText}>+ Admit Player Now</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      ) : (
+                        filteredAttendancePlayers.map((player) => {
+                          const curStatus = attendanceStatusMap[player.id] || "PRESENT";
+                          return (
+                            <View key={player.id} style={styles.attPlayerItem}>
+                              <View style={styles.attPlayerLeft}>
+                                <View style={styles.attPlayerAvatar}>
+                                  <Text style={styles.attPlayerAvatarText}>
+                                    {player.fullName.slice(0, 1).toUpperCase()}
+                                  </Text>
                                 </View>
-                                <Text style={styles.attPlayerMetaText}>
-                                  {player.venue || "OFA-1"} • {player.primarySport?.name || "General"}
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text style={styles.attPlayerName} numberOfLines={1}>
+                                    {player.fullName}
+                                  </Text>
+                                  <View style={styles.attPlayerMetaRow}>
+                                    <View style={styles.attPlayerCodeBadge}>
+                                      <Text style={styles.attPlayerCodeText}>{player.playerCode}</Text>
+                                    </View>
+                                    <Text style={styles.attPlayerMetaText}>
+                                      {player.venue || "OFA-1"} • {player.primarySport?.name || "General"}
+                                    </Text>
+                                    {(player.mobileNumber || player.guardianPhone) ? (
+                                      <ClickablePhone phone={player.mobileNumber || player.guardianPhone} />
+                                    ) : null}
+                                  </View>
+                                </View>
+                              </View>
+
+                              {/* Quick 4-Status Pill Selector */}
+                              <View style={styles.attStatusPillGroup}>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.attStatusBtn,
+                                    curStatus === "PRESENT" && styles.attStatusPresentActive,
+                                  ]}
+                                  onPress={() => setPlayerAttendanceStatus(player.id, "PRESENT")}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.attStatusBtnText,
+                                      curStatus === "PRESENT" && styles.attStatusPresentTextActive,
+                                    ]}
+                                  >
+                                    P
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={[
+                                    styles.attStatusBtn,
+                                    curStatus === "ABSENT" && styles.attStatusAbsentActive,
+                                  ]}
+                                  onPress={() => setPlayerAttendanceStatus(player.id, "ABSENT")}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.attStatusBtnText,
+                                      curStatus === "ABSENT" && styles.attStatusAbsentTextActive,
+                                    ]}
+                                  >
+                                    A
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={[
+                                    styles.attStatusBtn,
+                                    curStatus === "LATE" && styles.attStatusLateActive,
+                                  ]}
+                                  onPress={() => setPlayerAttendanceStatus(player.id, "LATE")}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.attStatusBtnText,
+                                      curStatus === "LATE" && styles.attStatusLateTextActive,
+                                    ]}
+                                  >
+                                    L
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={[
+                                    styles.attStatusBtn,
+                                    curStatus === "EXCUSED" && styles.attStatusExcusedActive,
+                                  ]}
+                                  onPress={() => setPlayerAttendanceStatus(player.id, "EXCUSED")}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.attStatusBtnText,
+                                      curStatus === "EXCUSED" && styles.attStatusExcusedTextActive,
+                                    ]}
+                                  >
+                                    E
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          );
+                        })
+                      )}
+
+                      {/* Bottom Save Bar */}
+                      {filteredAttendancePlayers.length > 0 && (
+                        <View style={{ marginTop: 12, alignItems: "flex-end" }}>
+                          <TouchableOpacity
+                            style={styles.attSavePrimaryBtn}
+                            onPress={handleSaveAttendance}
+                            disabled={submittingAttendance}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={styles.attSavePrimaryBtnText}>
+                              {submittingAttendance
+                                ? "Saving..."
+                                : `💾 Save Attendance for ${attendanceDate} (${attendanceCounts.present} Present)`}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
+                  )}
+
+                  {/* ───────────────────────────────────────────────────────────────── */}
+                  {/* FEATURE 2: ATTENDANCE REPORT WITH COMPREHENSIVE FILTERS          */}
+                  {/* ───────────────────────────────────────────────────────────────── */}
+                  {attendanceMode === "report" && (
+                    <View style={{ marginTop: 8 }}>
+                      {/* Section Title & Subtitle */}
+                      <View style={{ marginBottom: 14 }}>
+                        <Text style={styles.attTitle}>📊 Attendance History & Reports</Text>
+                        <Text style={styles.attSub}>
+                          Filter by preset date range, custom dates, specific students, and attendance status
+                        </Text>
+                      </View>
+
+                      {/* Filter Panel */}
+                      <View style={styles.reportFilterBox}>
+                        {/* 1. Date Range Preset Filter */}
+                        <Text style={styles.reportFilterLabel}>📅 Date Range Presets:</Text>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={styles.presetScroll}
+                          contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+                        >
+                          {(
+                            [
+                              { key: "today", label: "Today" },
+                              { key: "yesterday", label: "Yesterday" },
+                              { key: "this_week", label: "This Week" },
+                              { key: "this_month", label: "This Month" },
+                              { key: "last_month", label: "Last Month" },
+                              { key: "custom", label: "Custom Range" },
+                            ] as const
+                          ).map((p) => (
+                            <TouchableOpacity
+                              key={p.key}
+                              style={[
+                                styles.reportPresetChip,
+                                reportDatePreset === p.key && styles.reportPresetChipActive,
+                              ]}
+                              onPress={() => handleSelectPreset(p.key)}
+                              activeOpacity={0.7}
+                            >
+                              <Text
+                                style={[
+                                  styles.reportPresetChipText,
+                                  reportDatePreset === p.key && styles.reportPresetChipTextActive,
+                                ]}
+                              >
+                                {p.label}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+
+                        {/* Custom Date Inputs (Always available or when Custom selected) */}
+                        <View style={styles.customRangeRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.customRangeLabel}>From (YYYY-MM-DD):</Text>
+                            <TextInput
+                              style={styles.customRangeInput}
+                              value={reportFromDate}
+                              onChangeText={(v) => {
+                                setReportFromDate(v);
+                                setReportDatePreset("custom");
+                              }}
+                              placeholder="YYYY-MM-DD"
+                              placeholderTextColor="#64748B"
+                              maxLength={10}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.customRangeLabel}>To (YYYY-MM-DD):</Text>
+                            <TextInput
+                              style={styles.customRangeInput}
+                              value={reportToDate}
+                              onChangeText={(v) => {
+                                setReportToDate(v);
+                                setReportDatePreset("custom");
+                              }}
+                              placeholder="YYYY-MM-DD"
+                              placeholderTextColor="#64748B"
+                              maxLength={10}
+                            />
+                          </View>
+                          <TouchableOpacity
+                            style={styles.customRangeApplyBtn}
+                            onPress={() =>
+                              loadAttendanceReport(
+                                reportFromDate,
+                                reportToDate,
+                                reportStudentFilter,
+                                reportStatusFilter
+                              )
+                            }
+                            activeOpacity={0.8}
+                          >
+                            <Text style={styles.customRangeApplyText}>Apply</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* 2. Student Wise Filter */}
+                        <Text style={[styles.reportFilterLabel, { marginTop: 12 }]}>
+                          👤 Student-Wise Filter:
+                        </Text>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={styles.presetScroll}
+                          contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+                        >
+                          <TouchableOpacity
+                            style={[
+                              styles.reportStudentChip,
+                              reportStudentFilter === "ALL" && styles.reportStudentChipActive,
+                            ]}
+                            onPress={() => {
+                              setReportStudentFilter("ALL");
+                              loadAttendanceReport(reportFromDate, reportToDate, "ALL", reportStatusFilter);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.reportStudentChipText,
+                                reportStudentFilter === "ALL" && styles.reportStudentChipTextActive,
+                              ]}
+                            >
+                              👥 All Students ({players.length})
+                            </Text>
+                          </TouchableOpacity>
+
+                          {players.map((p) => {
+                            const isSelected = reportStudentFilter === p.id;
+                            return (
+                              <TouchableOpacity
+                                key={p.id}
+                                style={[
+                                  styles.reportStudentChip,
+                                  isSelected && styles.reportStudentChipActive,
+                                ]}
+                                onPress={() => {
+                                  setReportStudentFilter(p.id);
+                                  loadAttendanceReport(reportFromDate, reportToDate, p.id, reportStatusFilter);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.reportStudentChipText,
+                                    isSelected && styles.reportStudentChipTextActive,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {p.fullName} ({p.playerCode})
                                 </Text>
-                                {(player.mobileNumber || player.guardianPhone) ? (
-                                  <ClickablePhone phone={player.mobileNumber || player.guardianPhone} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+
+                        {/* 3. Status Filter & Keyword Search */}
+                        <View style={styles.reportStatusSearchRow}>
+                          <View style={{ flex: 1, minWidth: 200 }}>
+                            <TextInput
+                              style={styles.searchBarInput}
+                              placeholder="Search student, code, or phone..."
+                              placeholderTextColor="#64748B"
+                              value={reportSearch}
+                              onChangeText={setReportSearch}
+                            />
+                          </View>
+                          <View style={styles.filterChipsRow}>
+                            {(["ALL", "PRESENT", "ABSENT", "LATE", "EXCUSED"] as const).map((st) => (
+                              <TouchableOpacity
+                                key={st}
+                                style={[
+                                  styles.filterChip,
+                                  reportStatusFilter === st && styles.filterChipActive,
+                                ]}
+                                onPress={() => {
+                                  setReportStatusFilter(st);
+                                  loadAttendanceReport(reportFromDate, reportToDate, reportStudentFilter, st);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.filterChipText,
+                                    reportStatusFilter === st && styles.filterChipTextActive,
+                                  ]}
+                                >
+                                  {st}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* KPI Summary for Filtered Report */}
+                      <View style={styles.attKpiRow}>
+                        <View style={styles.attKpiCard}>
+                          <Text style={styles.attKpiVal}>{reportMetrics.total}</Text>
+                          <Text style={styles.attKpiLbl}>Total Records</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(16, 185, 129, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#10B981" }]}>
+                            {reportMetrics.present}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Present</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(239, 68, 68, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#EF4444" }]}>
+                            {reportMetrics.absent}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Absent</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(245, 158, 11, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#F59E0B" }]}>
+                            {reportMetrics.late}
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Late</Text>
+                        </View>
+                        <View style={[styles.attKpiCard, { borderColor: "rgba(99, 102, 241, 0.4)" }]}>
+                          <Text style={[styles.attKpiVal, { color: "#818CF8" }]}>
+                            {reportMetrics.rate}%
+                          </Text>
+                          <Text style={styles.attKpiLbl}>Present Rate</Text>
+                        </View>
+                      </View>
+
+                      {/* Report Records Feed */}
+                      {loadingReport ? (
+                        <View style={{ paddingVertical: 32, alignItems: "center" }}>
+                          <ActivityIndicator size="large" color="#3B82F6" />
+                          <Text style={{ color: "#94A3B8", marginTop: 8, fontSize: 13 }}>
+                            Loading attendance records...
+                          </Text>
+                        </View>
+                      ) : filteredReportRecords.length === 0 ? (
+                        <View style={{ paddingVertical: 32, alignItems: "center" }}>
+                          <Text style={{ fontSize: 36, marginBottom: 8 }}>📋</Text>
+                          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>
+                            No Attendance Records Found
+                          </Text>
+                          <Text
+                            style={{
+                              color: "#94A3B8",
+                              fontSize: 12,
+                              marginTop: 4,
+                              textAlign: "center",
+                              maxWidth: 340,
+                            }}
+                          >
+                            No attendance records match your current filters for the period{" "}
+                            {reportFromDate} to {reportToDate}. Try adjusting your date range or student filter.
+                          </Text>
+                          <TouchableOpacity
+                            style={[styles.primaryActionBtn, { marginTop: 14 }]}
+                            onPress={() => {
+                              handleSelectPreset("this_month");
+                              setReportStudentFilter("ALL");
+                              setReportStatusFilter("ALL");
+                              setReportSearch("");
+                            }}
+                          >
+                            <Text style={styles.primaryActionBtnText}>Reset All Filters</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        filteredReportRecords.map((rec) => {
+                          const student =
+                            rec.player || players.find((p) => p.id === rec.playerId);
+                          const studentName = student?.fullName || "Academy Student";
+                          const studentCode = student?.playerCode || "OFA-*";
+                          const studentPhone =
+                            student?.guardianPhone || student?.mobileNumber || "";
+
+                          return (
+                            <View key={rec.id} style={styles.reportRecordCard}>
+                              <View style={styles.reportRecordTop}>
+                                <View style={styles.reportDateBadge}>
+                                  <Text style={styles.reportDateText}>
+                                    📅 {rec.sessionDate || "Unknown Date"}
+                                  </Text>
+                                </View>
+                                <View
+                                  style={[
+                                    styles.reportStatusBadge,
+                                    rec.status === "PRESENT" && styles.reportStatusBadgePresent,
+                                    rec.status === "ABSENT" && styles.reportStatusBadgeAbsent,
+                                    rec.status === "LATE" && styles.reportStatusBadgeLate,
+                                    rec.status === "EXCUSED" && styles.reportStatusBadgeExcused,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.reportStatusBadgeText,
+                                      rec.status === "PRESENT" && styles.reportStatusBadgeTextPresent,
+                                      rec.status === "ABSENT" && styles.reportStatusBadgeTextAbsent,
+                                      rec.status === "LATE" && styles.reportStatusBadgeTextLate,
+                                      rec.status === "EXCUSED" && styles.reportStatusBadgeTextExcused,
+                                    ]}
+                                  >
+                                    {rec.status}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <View style={styles.reportRecordBody}>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                    <Text style={styles.reportStudentName} numberOfLines={1}>
+                                      {studentName}
+                                    </Text>
+                                    <View style={styles.attPlayerCodeBadge}>
+                                      <Text style={styles.attPlayerCodeText}>{studentCode}</Text>
+                                    </View>
+                                  </View>
+
+                                  <View style={styles.reportRecordMetaRow}>
+                                    <Text style={styles.reportRecordSub}>
+                                      Session: {rec.sessionTime || "06:00 - 08:00 AM"}
+                                      {rec.markedBy ? ` • Marked by: ${rec.markedBy}` : ""}
+                                    </Text>
+                                  </View>
+
+                                  {rec.notes ? (
+                                    <Text style={styles.reportRecordNotes} numberOfLines={2}>
+                                      💬 {rec.notes}
+                                    </Text>
+                                  ) : null}
+                                </View>
+
+                                {studentPhone ? (
+                                  <ClickablePhone phone={studentPhone} />
                                 ) : null}
                               </View>
                             </View>
-                          </View>
-
-                          {/* Quick 4-Status Pill Selector */}
-                          <View style={styles.attStatusPillGroup}>
-                            <TouchableOpacity
-                              style={[
-                                styles.attStatusBtn,
-                                curStatus === "PRESENT" && styles.attStatusPresentActive,
-                              ]}
-                              onPress={() => setPlayerAttendanceStatus(player.id, "PRESENT")}
-                              activeOpacity={0.7}
-                            >
-                              <Text
-                                style={[
-                                  styles.attStatusBtnText,
-                                  curStatus === "PRESENT" && styles.attStatusPresentTextActive,
-                                ]}
-                              >
-                                P
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[
-                                styles.attStatusBtn,
-                                curStatus === "ABSENT" && styles.attStatusAbsentActive,
-                              ]}
-                              onPress={() => setPlayerAttendanceStatus(player.id, "ABSENT")}
-                              activeOpacity={0.7}
-                            >
-                              <Text
-                                style={[
-                                  styles.attStatusBtnText,
-                                  curStatus === "ABSENT" && styles.attStatusAbsentTextActive,
-                                ]}
-                              >
-                                A
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[
-                                styles.attStatusBtn,
-                                curStatus === "LATE" && styles.attStatusLateActive,
-                              ]}
-                              onPress={() => setPlayerAttendanceStatus(player.id, "LATE")}
-                              activeOpacity={0.7}
-                            >
-                              <Text
-                                style={[
-                                  styles.attStatusBtnText,
-                                  curStatus === "LATE" && styles.attStatusLateTextActive,
-                                ]}
-                              >
-                                L
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[
-                                styles.attStatusBtn,
-                                curStatus === "EXCUSED" && styles.attStatusExcusedActive,
-                              ]}
-                              onPress={() => setPlayerAttendanceStatus(player.id, "EXCUSED")}
-                              activeOpacity={0.7}
-                            >
-                              <Text
-                                style={[
-                                  styles.attStatusBtnText,
-                                  curStatus === "EXCUSED" && styles.attStatusExcusedTextActive,
-                                ]}
-                              >
-                                E
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })
-                  )}
-
-                  {/* Bottom Save Bar */}
-                  {filteredAttendancePlayers.length > 0 && (
-                    <View style={{ marginTop: 12, alignItems: "flex-end" }}>
-                      <TouchableOpacity
-                        style={styles.attSavePrimaryBtn}
-                        onPress={handleSaveAttendance}
-                        disabled={submittingAttendance}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.attSavePrimaryBtnText}>
-                          {submittingAttendance ? "Saving..." : `💾 Save Attendance (${attendanceCounts.present} Present)`}
-                        </Text>
-                      </TouchableOpacity>
+                          );
+                        })
+                      )}
                     </View>
                   )}
                 </View>
@@ -4455,5 +5013,260 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     textDecorationLine: "underline",
+  },
+
+  // Attendance Sheet Dual-Feature Styles (Mark vs Report)
+  attModeToggleRow: {
+    flexDirection: "row",
+    backgroundColor: "#0F172A",
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    gap: 6,
+  },
+  attModeToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attModeToggleBtnActive: {
+    backgroundColor: "#2563EB",
+  },
+  attModeToggleText: {
+    color: "#94A3B8",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  attModeToggleTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  attDateSelectorWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  attDateInput: {
+    color: "#38BDF8",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+    minWidth: 92,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  attTodayBtn: {
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  attTodayBtnText: {
+    color: "#38BDF8",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  reportFilterBox: {
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  reportFilterLabel: {
+    color: "#94A3B8",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  presetScroll: {
+    marginBottom: 8,
+  },
+  reportPresetChip: {
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  reportPresetChipActive: {
+    backgroundColor: "#2563EB",
+    borderColor: "#3B82F6",
+  },
+  reportPresetChipText: {
+    color: "#CBD5E1",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  reportPresetChipTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  customRangeRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  customRangeLabel: {
+    color: "#64748B",
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  customRangeInput: {
+    backgroundColor: "#141D30",
+    borderWidth: 1,
+    borderColor: "#202E46",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: "#FFFFFF",
+    fontSize: 12,
+  },
+  customRangeApplyBtn: {
+    backgroundColor: "#10B981",
+    borderRadius: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    height: 32,
+  },
+  customRangeApplyText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  reportStudentChip: {
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    maxWidth: 200,
+  },
+  reportStudentChipActive: {
+    backgroundColor: "#0D9488",
+    borderColor: "#14B8A6",
+  },
+  reportStudentChipText: {
+    color: "#CBD5E1",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  reportStudentChipTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
+  reportStatusSearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+    flexWrap: "wrap",
+  },
+  reportRecordCard: {
+    backgroundColor: "#131C2E",
+    borderWidth: 1,
+    borderColor: "#1E2B45",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  reportRecordTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1E293B",
+    paddingBottom: 6,
+  },
+  reportDateBadge: {
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.3)",
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  reportDateText: {
+    color: "#38BDF8",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  reportStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  reportStatusBadgePresent: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderColor: "#10B981",
+  },
+  reportStatusBadgeAbsent: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderColor: "#EF4444",
+  },
+  reportStatusBadgeLate: {
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderColor: "#F59E0B",
+  },
+  reportStatusBadgeExcused: {
+    backgroundColor: "rgba(99, 102, 241, 0.15)",
+    borderColor: "#6366F1",
+  },
+  reportStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  reportStatusBadgeTextPresent: {
+    color: "#34D399",
+  },
+  reportStatusBadgeTextAbsent: {
+    color: "#F87171",
+  },
+  reportStatusBadgeTextLate: {
+    color: "#FBBF24",
+  },
+  reportStatusBadgeTextExcused: {
+    color: "#A5B4FC",
+  },
+  reportRecordBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  reportStudentName: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  reportRecordMetaRow: {
+    marginTop: 3,
+  },
+  reportRecordSub: {
+    color: "#94A3B8",
+    fontSize: 11,
+  },
+  reportRecordNotes: {
+    color: "#CBD5E1",
+    fontSize: 11,
+    marginTop: 4,
+    fontStyle: "italic",
   },
 });
