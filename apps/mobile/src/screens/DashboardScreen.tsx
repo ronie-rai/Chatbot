@@ -1451,7 +1451,7 @@ export function DashboardScreen({ navigation, route }: Props) {
 
         {/* ── Mobile Overlay Navigation Drawer (Shows ALL Names when expanded without hiding notification tray) ── */}
         {isMobile && !sidebarCollapsed && (
-          <View style={styles.drawerModalBackdrop}>
+          <View style={[styles.drawerModalBackdrop, { top: insets.top, bottom: 0 }]}>
               <View style={styles.drawerPanel}>
                 {/* Drawer Header with Brand & Close Button */}
                 <View style={styles.drawerHeaderRow}>
@@ -1559,7 +1559,7 @@ export function DashboardScreen({ navigation, route }: Props) {
                 </ScrollView>
 
                 {/* Drawer Footer */}
-                <View style={styles.sidebarFooter}>
+                <View style={[styles.sidebarFooter, { paddingBottom: Math.max(insets.bottom, 12) }]}>
                   <TouchableOpacity
                     style={styles.collapseToggleBtn}
                     onPress={() => setSidebarCollapsed(true)}
@@ -1596,7 +1596,7 @@ export function DashboardScreen({ navigation, route }: Props) {
 
   return (
     <View style={[styles.screenContainer, { paddingTop: insets.top }]}>
-      <RNStatusBar barStyle="light-content" backgroundColor="#0F1626" translucent={false} />
+      <RNStatusBar barStyle="light-content" backgroundColor="#0F1626" translucent={false} hidden={false} />
       {/* Permanent Left-Side Navigation Tabs on all devices */}
       {renderSidebar()}
 
@@ -3188,7 +3188,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "rgba(0,0,0,0.65)",
     zIndex: 9999,
-    elevation: 9999,
+    elevation: 50,
   },
   drawerPanel: {
     width: 275,

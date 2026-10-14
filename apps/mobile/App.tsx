@@ -46,7 +46,7 @@ export default function App(): React.ReactElement {
   return (
     <SafeAreaProvider style={styles.container}>
       <NavigationContainer ref={navigationRef}>
-        <StatusBar style="light" />
+        <StatusBar style="light" hidden={false} />
         <RootNavigator />
       </NavigationContainer>
     </SafeAreaProvider>
