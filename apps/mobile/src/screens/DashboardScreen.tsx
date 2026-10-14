@@ -159,6 +159,17 @@ export function DashboardScreen({ navigation, route }: Props) {
   const [batches, setBatches] = useState<AcademyBatch[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
 
+  // Consumables State (Editable & Deletable Table)
+  const [consumablesList, setConsumablesList] = useState<ConsumableItem[]>(() => [...ACADEMY_CONSUMABLES]);
+  const [consumableSearch, setConsumableSearch] = useState<string>("");
+  const [consumableCategoryFilter, setConsumableCategoryFilter] = useState<string>("ALL");
+  const [isConsumableModalOpen, setIsConsumableModalOpen] = useState(false);
+  const [editingConsumable, setEditingConsumable] = useState<ConsumableItem | null>(null);
+  const [consumableName, setConsumableName] = useState("");
+  const [consumableCategory, setConsumableCategory] = useState<ConsumableItem["category"]>("Beverages");
+  const [consumablePrice, setConsumablePrice] = useState("");
+  const [consumableUnit, setConsumableUnit] = useState("unit");
+
   // Attendance Roster State (Feature 1: Mark Attendance)
   const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [attendanceStatusMap, setAttendanceStatusMap] = useState<Record<string, "PRESENT" | "ABSENT" | "LATE" | "EXCUSED">>({});
@@ -468,12 +479,131 @@ export function DashboardScreen({ navigation, route }: Props) {
     });
   };
 
+  // ─── Consumables Table Handlers (Edit, Delete, Add & Sync) ─────────────────
+  const syncConsumablesStore = (newList: ConsumableItem[]) => {
+    setConsumablesList(newList);
+    ACADEMY_CONSUMABLES.length = 0;
+    ACADEMY_CONSUMABLES.push(...newList);
+  };
+
+  const handleOpenAddConsumable = () => {
+    setEditingConsumable(null);
+    setConsumableName("");
+    setConsumableCategory("Beverages");
+    setConsumablePrice("");
+    setConsumableUnit("unit");
+    setIsConsumableModalOpen(true);
+  };
+
+  const handleOpenEditConsumable = (item: ConsumableItem) => {
+    setEditingConsumable(item);
+    setConsumableName(item.name);
+    setConsumableCategory(item.category);
+    setConsumablePrice(String(item.price));
+    setConsumableUnit(item.unit);
+    setIsConsumableModalOpen(true);
+  };
+
+  const handleDeleteConsumable = (item: ConsumableItem) => {
+    Alert.alert(
+      "Delete Consumable Item",
+      `Are you sure you want to delete "${item.name}"? This will remove it from the catalog.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            const updated = consumablesList.filter((c) => c.id !== item.id);
+            syncConsumablesStore(updated);
+            setBookingConsumables((prev) => {
+              const copy = { ...prev };
+              delete copy[item.id];
+              return copy;
+            });
+            Alert.alert("Item Deleted", `"${item.name}" was removed from the consumables table.`);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSaveConsumableSubmit = () => {
+    if (!consumableName.trim()) {
+      Alert.alert("Missing Name", "Please enter the consumable item description.");
+      return;
+    }
+    const priceNum = parseFloat(consumablePrice);
+    if (isNaN(priceNum) || priceNum < 0) {
+      Alert.alert("Invalid Price", "Please enter a valid price in ₹.");
+      return;
+    }
+
+    if (editingConsumable) {
+      const updatedItem: ConsumableItem = {
+        ...editingConsumable,
+        name: consumableName.trim(),
+        category: consumableCategory,
+        price: priceNum,
+        unit: consumableUnit.trim() || "unit",
+      };
+      const updatedList = consumablesList.map((c) =>
+        c.id === editingConsumable.id ? updatedItem : c
+      );
+      syncConsumablesStore(updatedList);
+      setIsConsumableModalOpen(false);
+      Alert.alert("Success", `Updated "${updatedItem.name}" in the consumables table.`);
+    } else {
+      const newItem: ConsumableItem = {
+        id: `con-${Date.now().toString().slice(-4)}`,
+        name: consumableName.trim(),
+        category: consumableCategory,
+        price: priceNum,
+        unit: consumableUnit.trim() || "unit",
+      };
+      const updatedList = [...consumablesList, newItem];
+      syncConsumablesStore(updatedList);
+      setIsConsumableModalOpen(false);
+      Alert.alert("Success", `Added "${newItem.name}" to the consumables table.`);
+    }
+  };
+
+  const filteredConsumables = useMemo(() => {
+    return consumablesList.filter((c) => {
+      const matchCategory =
+        consumableCategoryFilter === "ALL" || c.category === consumableCategoryFilter;
+      const q = consumableSearch.toLowerCase().trim();
+      const matchSearch =
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q);
+      return matchCategory && matchSearch;
+    });
+  }, [consumablesList, consumableCategoryFilter, consumableSearch]);
+
+  const consumableMetrics = useMemo(() => {
+    const total = consumablesList.length;
+    const avgPrice =
+      total > 0
+        ? Math.round(consumablesList.reduce((acc, c) => acc + c.price, 0) / total)
+        : 0;
+    const equipmentCount = consumablesList.filter(
+      (c) => c.category === "Equipment" || c.category === "Rentals"
+    ).length;
+    const beveragesCount = consumablesList.filter(
+      (c) => c.category === "Beverages" || c.category === "Snacks"
+    ).length;
+    return { total, avgPrice, equipmentCount, beveragesCount };
+  }, [consumablesList]);
+
   const consumablesTotal = useMemo(() => {
     return Object.entries(bookingConsumables).reduce((acc, [id, qty]) => {
-      const item = ACADEMY_CONSUMABLES.find((c) => c.id === id);
+      const item = consumablesList.find((c) => c.id === id);
       return acc + (item ? item.price * qty : 0);
     }, 0);
-  }, [bookingConsumables]);
+  }, [bookingConsumables, consumablesList]);
+
 
   // Handler: In-Place Booking Creation (Requirement 4: Title removed, Consumables added)
   const handleCreateBookingSubmit = async () => {
@@ -1349,7 +1479,7 @@ export function DashboardScreen({ navigation, route }: Props) {
       {
         id: "name",
         label: "Item Description",
-        width: 240,
+        width: 230,
         sortValue: (c) => c.name,
         renderCell: (c) => (
           <Text style={styles.cellBoldText} numberOfLines={1}>
@@ -1387,15 +1517,38 @@ export function DashboardScreen({ navigation, route }: Props) {
       {
         id: "status",
         label: "Stock Status",
-        width: 120,
+        width: 110,
         renderCell: () => (
           <View style={[styles.badgeWrap, styles.badgeConfirmed]}>
             <Text style={styles.badgeTextConfirmed}>● In Stock</Text>
           </View>
         ),
       },
+      {
+        id: "actions",
+        label: "Actions",
+        width: 140,
+        renderCell: (c) => (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <TouchableOpacity
+              style={styles.tableRowEditBtn}
+              onPress={() => handleOpenEditConsumable(c)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.tableRowEditBtnText}>✏️ Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.tableRowDeleteBtn}
+              onPress={() => handleDeleteConsumable(c)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.tableRowDeleteBtnText}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
+        ),
+      },
     ],
-    []
+    [consumablesList]
   );
 
   // ─── Ribbon Sidebar Render ──────────────────────────────────────────────────
@@ -1413,7 +1566,7 @@ export function DashboardScreen({ navigation, route }: Props) {
       { id: "bookings", label: "Courts & Bookings", icon: "📅", badge: String(bookings.length) },
       { id: "players", label: "Players", icon: "👥", badge: String(players.length) },
       { id: "finance", label: "Fees & Payments", icon: "💰", badge: String(invoices.length) },
-      { id: "consumables", label: "Consumables Table", icon: "📦", badge: String(ACADEMY_CONSUMABLES.length) },
+      { id: "consumables", label: "Consumables Table", icon: "📦", badge: String(consumablesList.length) },
       { id: "attendance", label: "Attendance Sheet", icon: "⏱️", badge: `${players.length} Students` },
       { id: "sports", label: "Sports Master", icon: "🏅", badge: String(sports.length) },
     ];
@@ -1769,7 +1922,7 @@ export function DashboardScreen({ navigation, route }: Props) {
               <Text style={styles.refreshIconText}>🔄</Text>
             </TouchableOpacity>
 
-            {(activeTab === "bookings" || activeTab === "overview" || activeTab === "consumables") && (
+            {(activeTab === "bookings" || activeTab === "overview") && (
               <TouchableOpacity
                 style={styles.primaryActionBtn}
                 onPress={() => setIsNewBookingModalOpen(true)}
@@ -1777,6 +1930,18 @@ export function DashboardScreen({ navigation, route }: Props) {
               >
                 <Text style={styles.primaryActionBtnText}>
                   {windowWidth < 420 ? "+ New" : "+ New Booking"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {activeTab === "consumables" && (
+              <TouchableOpacity
+                style={styles.primaryActionBtn}
+                onPress={handleOpenAddConsumable}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryActionBtnText}>
+                  {windowWidth < 420 ? "+ Item" : "+ Add Consumable"}
                 </Text>
               </TouchableOpacity>
             )}
@@ -2923,23 +3088,86 @@ export function DashboardScreen({ navigation, route }: Props) {
                         📦 Academy Consumables & Equipment Catalog
                       </Text>
                       <Text style={styles.overviewSectionSub} numberOfLines={1} ellipsizeMode="tail">
-                        Inventory list of consumable items and rental gear with fixed rates
+                        Each item row is editable and can be deleted • Real-time price calculation
                       </Text>
                     </View>
                     <TouchableOpacity
                       style={styles.sectionHeaderActionBtn}
-                      onPress={() => setIsNewBookingModalOpen(true)}
+                      onPress={handleOpenAddConsumable}
+                      activeOpacity={0.8}
                     >
                       <Text style={styles.sectionHeaderActionText}>
-                        {windowWidth < 420 ? "+ New" : "+ New Booking"}
+                        + Add Consumable Item
                       </Text>
                     </TouchableOpacity>
                   </View>
+
+                  {/* Consumables KPI Metric Cards */}
+                  <View style={[styles.attKpiRow, { marginTop: 12 }]}>
+                    <View style={styles.attKpiCard}>
+                      <Text style={styles.attKpiVal}>{consumableMetrics.total}</Text>
+                      <Text style={styles.attKpiLbl}>Total Items</Text>
+                    </View>
+                    <View style={[styles.attKpiCard, { borderColor: "rgba(16, 185, 129, 0.4)" }]}>
+                      <Text style={[styles.attKpiVal, { color: "#10B981" }]}>
+                        ₹{consumableMetrics.avgPrice}
+                      </Text>
+                      <Text style={styles.attKpiLbl}>Avg Price</Text>
+                    </View>
+                    <View style={[styles.attKpiCard, { borderColor: "rgba(56, 189, 248, 0.4)" }]}>
+                      <Text style={[styles.attKpiVal, { color: "#38BDF8" }]}>
+                        {consumableMetrics.equipmentCount}
+                      </Text>
+                      <Text style={styles.attKpiLbl}>Equipment/Rent</Text>
+                    </View>
+                    <View style={[styles.attKpiCard, { borderColor: "rgba(245, 158, 11, 0.4)" }]}>
+                      <Text style={[styles.attKpiVal, { color: "#F59E0B" }]}>
+                        {consumableMetrics.beveragesCount}
+                      </Text>
+                      <Text style={styles.attKpiLbl}>Drinks & Snacks</Text>
+                    </View>
+                  </View>
+
+                  {/* Search and Category Filter Toolbar */}
+                  <View style={[styles.filterControlBar, { marginTop: 10, marginBottom: 12 }]}>
+                    <TextInput
+                      style={styles.searchBarInput}
+                      placeholder="Search consumables by item name or code..."
+                      placeholderTextColor="#64748B"
+                      value={consumableSearch}
+                      onChangeText={setConsumableSearch}
+                    />
+
+                    <View style={styles.filterChipsRow}>
+                      {(["ALL", "Beverages", "Equipment", "Rentals", "Accessories", "Snacks", "First Aid"] as const).map(
+                        (cat) => (
+                          <TouchableOpacity
+                            key={cat}
+                            style={[
+                              styles.filterChip,
+                              consumableCategoryFilter === cat && styles.filterChipActive,
+                            ]}
+                            onPress={() => setConsumableCategoryFilter(cat)}
+                          >
+                            <Text
+                              style={[
+                                styles.filterChipText,
+                                consumableCategoryFilter === cat && styles.filterChipTextActive,
+                              ]}
+                            >
+                              {cat}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      )}
+                    </View>
+                  </View>
+
                   <FlexibleDataTable
-                    data={ACADEMY_CONSUMABLES}
+                    data={filteredConsumables}
                     columns={consumableColumns}
                     keyExtractor={(c) => c.id}
-                    emptyMessage="No consumable items configured."
+                    emptyMessage="No consumable items match current filter. Tap '+ Add Consumable Item' to add one."
                   />
                 </View>
               )}
@@ -3074,7 +3302,7 @@ export function DashboardScreen({ navigation, route }: Props) {
                   </Text>
                 </View>
 
-                {ACADEMY_CONSUMABLES.map((item) => {
+                {consumablesList.map((item) => {
                   const qty = bookingConsumables[item.id] || 0;
                   return (
                     <View key={item.id} style={styles.consumableItemRow}>
@@ -3678,6 +3906,118 @@ export function DashboardScreen({ navigation, route }: Props) {
                 ) : (
                   <Text style={styles.submitModalBtnText}>Record Payment</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 4: EDIT / ADD CONSUMABLE ITEM                                      */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={isConsumableModalOpen} animationType="fade" transparent>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalBackdrop}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 10}
+        >
+          <View style={[styles.modalContainer, { maxWidth: 560 }]}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={styles.modalTitleText}>
+                  {editingConsumable ? "✏️ Edit Consumable Item" : "➕ Add Consumable Item"}
+                </Text>
+                <Text style={styles.modalSubText}>
+                  {editingConsumable
+                    ? `Editing ${editingConsumable.id.toUpperCase()} • ${editingConsumable.name}`
+                    : "Configure a new consumable item or equipment rental in the catalog"}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsConsumableModalOpen(false)}>
+                <Text style={styles.closeModalText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalFormScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+            >
+              <Text style={styles.formLabel}>ITEM DESCRIPTION / NAME *</Text>
+              <TextInput
+                style={styles.modalDarkInput}
+                placeholder="e.g. Yonex Mavis 350 Shuttles (Pack of 3)"
+                placeholderTextColor="#64748B"
+                value={consumableName}
+                onChangeText={setConsumableName}
+              />
+
+              <Text style={styles.formLabel}>CATEGORY *</Text>
+              <View style={[styles.filterChipsRow, { marginBottom: 12, flexWrap: "wrap", gap: 6 }]}>
+                {(["Beverages", "Equipment", "Rentals", "Accessories", "Snacks", "First Aid"] as const).map(
+                  (cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.filterChip,
+                        consumableCategory === cat && styles.filterChipActive,
+                      ]}
+                      onPress={() => setConsumableCategory(cat)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          consumableCategory === cat && styles.filterChipTextActive,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formCol}>
+                  <Text style={styles.formLabel}>PRICE (₹) *</Text>
+                  <TextInput
+                    style={styles.modalDarkInput}
+                    placeholder="e.g. 350"
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                    value={consumablePrice}
+                    onChangeText={setConsumablePrice}
+                  />
+                </View>
+
+                <View style={styles.formCol}>
+                  <Text style={styles.formLabel}>BILLING UNIT *</Text>
+                  <TextInput
+                    style={styles.modalDarkInput}
+                    placeholder="e.g. bottle, tube, can, hour, pc"
+                    placeholderTextColor="#64748B"
+                    value={consumableUnit}
+                    onChangeText={setConsumableUnit}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setIsConsumableModalOpen(false)}
+              >
+                <Text style={styles.cancelModalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.submitModalBtn}
+                onPress={handleSaveConsumableSubmit}
+              >
+                <Text style={styles.submitModalBtnText}>
+                  {editingConsumable ? "Save Changes" : "Add Item"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -5268,5 +5608,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 4,
     fontStyle: "italic",
+  },
+
+  // Consumables Table Row Action Buttons
+  tableRowEditBtn: {
+    backgroundColor: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  tableRowEditBtnText: {
+    color: "#60A5FA",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  tableRowDeleteBtn: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderWidth: 1,
+    borderColor: "#EF4444",
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  tableRowDeleteBtnText: {
+    color: "#F87171",
+    fontSize: 11,
+    fontWeight: "700",
   },
 });
