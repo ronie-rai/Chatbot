@@ -4,37 +4,37 @@
  */
 
 export const Colors = {
-  // ── Brand ──────────────────────────────────────────────────────────────────
-  primary: "#075E54",       // WhatsApp dark green (header, FAB)
-  primaryLight: "#128C7E",  // WhatsApp medium green (active states)
-  accent: "#25D366",        // WhatsApp bright green (online indicator, send btn)
-  accentLight: "#DCF8C6",   // Sent bubble background (light mint)
+  // ── Brand (OFA Sports Foundation Monochrome Palette) ───────────────────────
+  primary: "#000000",       // Pure black matching OFA logo
+  primaryLight: "#18181B",  // Dark zinc / charcoal surface
+  accent: "#FFFFFF",        // Crisp athletic white
+  accentLight: "#27272A",   // Subtle dark border / surface
 
   // ── Chat bubbles ───────────────────────────────────────────────────────────
-  bubbleSent: "#DCF8C6",    // User's own messages
-  bubbleReceived: "#FFFFFF",// Other participants' messages
-  bubbleAI: "#E8F5E9",      // AI bot messages (slight green tint)
+  bubbleSent: "#18181B",    // Sleek dark sport bubble with white text
+  bubbleReceived: "#0F0F12",// Charcoal received bubble
+  bubbleAI: "#141417",      // AI bot response bubble
 
   // ── Backgrounds ───────────────────────────────────────────────────────────
-  chatBackground: "#ECE5DD", // Classic WhatsApp chat wallpaper beige
-  screenBackground: "#F0F0F0",
-  listBackground: "#FFFFFF",
+  chatBackground: "#000000", // Deep black background matching logo
+  screenBackground: "#09090B",
+  listBackground: "#0C0C0E",
 
   // ── Text ──────────────────────────────────────────────────────────────────
-  textPrimary: "#111B21",   // Main body text
-  textSecondary: "#667781", // Timestamps, subtitles
-  textLight: "#FFFFFF",     // Text on dark backgrounds
-  textAccent: "#25D366",    // Unread count, online
+  textPrimary: "#FFFFFF",   // High-contrast crisp white text
+  textSecondary: "#A1A1AA", // Modern athletic silver text
+  textLight: "#FFFFFF",     // Pure white
+  textAccent: "#FFFFFF",    // Pure white accent
 
   // ── UI Elements ────────────────────────────────────────────────────────────
-  border: "#E9EDEF",
-  divider: "#E9EDEF",
-  inputBackground: "#FFFFFF",
-  headerBackground: "#075E54",
-  iconGrey: "#8696A0",
-  tickSent: "#8696A0",       // Single/double grey tick
-  tickRead: "#53BDEB",       // Blue double tick
-  unreadBadge: "#25D366",
+  border: "#27272A",
+  divider: "#27272A",
+  inputBackground: "#18181B",
+  headerBackground: "#000000",
+  iconGrey: "#71717A",
+  tickSent: "#71717A",
+  tickRead: "#FFFFFF",
+  unreadBadge: "#FFFFFF",
 } as const;
 
 export const Fonts = {

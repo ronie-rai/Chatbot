@@ -114,7 +114,7 @@ export function LoginScreen({ navigation }: Props) {
       } else {
         Alert.alert(
           "Sign In Failed",
-          "Invalid email or password.\n\nUse App User credentials or Admin credentials ruled by .env."
+          "Invalid email or password.\n\nUse App User credentials or Admin credentials."
         );
       }
     } finally {
@@ -160,7 +160,7 @@ export function LoginScreen({ navigation }: Props) {
             activeOpacity={0.8}
           >
             <Text style={[styles.roleBtnText, roleMode === "admin" && styles.roleBtnTextActive]}>
-              👑 Admin (.env)
+              👑 Admin
             </Text>
           </TouchableOpacity>
         </View>
@@ -202,14 +202,14 @@ export function LoginScreen({ navigation }: Props) {
           />
         </View>
 
-        {/* Quick hint badge */}
-        <View style={styles.hintContainer}>
-          <Text style={styles.hintText}>
-            {roleMode === "admin"
-              ? "🔑 Admin password ruled by SUPER_ADMIN_PASSWORD in .env"
-              : "💡 App User: access sports chat, bookings & services"}
-          </Text>
-        </View>
+        {/* Quick hint badge - only shown for admin if needed */}
+        {roleMode === "admin" ? (
+          <View style={styles.hintContainer}>
+            <Text style={styles.hintText}>
+              🔑 Admin authentication mode
+            </Text>
+          </View>
+        ) : null}
 
         <TouchableOpacity
           style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
@@ -284,7 +284,7 @@ export function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.headerBackground,
+    backgroundColor: "#000000",
     alignItems: "center",
     justifyContent: "center",
     padding: Spacing.xl,
@@ -294,45 +294,63 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   logoBadgeContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: 20,
+    width: 96,
+    height: 96,
+    borderRadius: 14,
     backgroundColor: "#000000",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.8)",
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.sm,
     shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: 8,
     overflow: "hidden",
   },
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 88,
+    height: 88,
   },
-  title: { fontSize: 26, fontWeight: "800", color: Colors.textLight, letterSpacing: -0.5, textAlign: "center" },
-  subtitle: { fontSize: Fonts.sizes.sm, color: "rgba(255,255,255,0.8)", marginTop: Spacing.xs, textAlign: "center" },
+  title: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: 1.2,
+    textAlign: "center",
+    textTransform: "uppercase",
+  },
+  subtitle: {
+    fontSize: Fonts.sizes.xs,
+    color: "#A1A1AA",
+    marginTop: Spacing.xs,
+    textAlign: "center",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
   form: {
     width: "100%",
-    backgroundColor: Colors.listBackground,
+    backgroundColor: "#0C0C0E",
     borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: "#27272A",
     padding: Spacing.xl,
     gap: Spacing.md,
     elevation: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
   },
   roleSelector: {
     flexDirection: "row",
-    backgroundColor: "#F0F2F5",
+    backgroundColor: "#18181B",
     borderRadius: Radius.md,
-    padding: 3,
+    borderWidth: 1,
+    borderColor: "#27272A",
+    padding: 4,
     marginBottom: Spacing.xs,
   },
   roleBtn: {
@@ -352,50 +370,58 @@ const styles = StyleSheet.create({
   roleBtnText: {
     fontSize: Fonts.sizes.sm,
     fontWeight: "600",
-    color: Colors.textSecondary,
+    color: "#A1A1AA",
   },
   roleBtnTextActive: {
-    color: Colors.primary,
-    fontWeight: "700",
+    color: "#000000",
+    fontWeight: "800",
   },
   inputGroup: { gap: Spacing.xs },
   label: {
     fontSize: Fonts.sizes.xs,
-    fontWeight: "700",
-    color: Colors.textSecondary,
+    fontWeight: "800",
+    color: "#A1A1AA",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   input: {
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: "#27272A",
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     fontSize: Fonts.sizes.md,
-    color: Colors.textPrimary,
-    backgroundColor: Colors.screenBackground,
+    color: "#FFFFFF",
+    backgroundColor: "#18181B",
   },
   hintContainer: {
-    backgroundColor: "#E8F5E9",
+    backgroundColor: "#18181B",
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    paddingVertical: Spacing.xs + 2,
     borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: "#27272A",
   },
   hintText: {
     fontSize: Fonts.sizes.xs,
-    color: "#2E7D32",
+    color: "#E4E4E7",
     lineHeight: 16,
+    fontWeight: "600",
   },
   loginBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: "#FFFFFF",
     borderRadius: Radius.md,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: Spacing.xs,
   },
   loginBtnDisabled: { opacity: 0.7 },
-  loginBtnText: { color: Colors.textLight, fontSize: Fonts.sizes.md, fontWeight: "700" },
+  loginBtnText: {
+    color: "#000000",
+    fontSize: Fonts.sizes.md,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
   serverConfigBtn: {
     alignItems: "center",
     paddingVertical: 8,
@@ -403,48 +429,51 @@ const styles = StyleSheet.create({
   },
   serverConfigText: {
     fontSize: Fonts.sizes.xs,
-    color: "#54656F",
-    fontWeight: "500",
+    color: "#A1A1AA",
+    fontWeight: "600",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "center",
     alignItems: "center",
     padding: Spacing.xl,
   },
   modalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0C0C0E",
     borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: "#27272A",
     padding: Spacing.xl,
     width: "100%",
     maxWidth: 380,
     elevation: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
   },
   modalTitle: {
     fontSize: Fonts.sizes.lg,
-    fontWeight: "700",
-    color: Colors.textPrimary,
+    fontWeight: "800",
+    color: "#FFFFFF",
     marginBottom: 4,
   },
   modalSubtitle: {
     fontSize: Fonts.sizes.xs,
-    color: Colors.textSecondary,
+    color: "#A1A1AA",
     marginBottom: Spacing.md,
     lineHeight: 18,
   },
   serverInput: {
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: "#27272A",
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.sm + 2,
     fontSize: Fonts.sizes.sm,
-    color: Colors.textPrimary,
+    color: "#FFFFFF",
+    backgroundColor: "#18181B",
     marginBottom: Spacing.lg,
   },
   modalActions: {
@@ -456,24 +485,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: Radius.md,
-    backgroundColor: "#F0F2F5",
+    backgroundColor: "#18181B",
+    borderWidth: 1,
+    borderColor: "#27272A",
     alignItems: "center",
   },
   modalResetText: {
     fontSize: Fonts.sizes.xs,
     fontWeight: "600",
-    color: "#54656F",
+    color: "#A1A1AA",
   },
   modalSaveBtn: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
   },
   modalSaveText: {
     fontSize: Fonts.sizes.xs,
-    fontWeight: "700",
-    color: "#FFFFFF",
+    fontWeight: "800",
+    color: "#000000",
   },
 });

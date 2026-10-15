@@ -1602,15 +1602,16 @@ export function DashboardScreen({ navigation, route }: Props) {
             activeOpacity={0.8}
           >
             <View style={styles.brandBadge}>
-              <Text style={styles.brandLogoIcon}>⚡</Text>
+              <Image
+                source={require("../../assets/ofa-logo.png")}
+                style={styles.brandLogoImg}
+                resizeMode="contain"
+              />
             </View>
             {!isRailCollapsed && !isMobile && (
               <View style={styles.brandTextWrap}>
-                <Text style={styles.brandTitle}>OFA ACADEMY</Text>
-                <View style={styles.liveIndicatorRow}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>OPERATIONS</Text>
-                </View>
+                <Text style={styles.brandTitle}>OFA SPORTS</Text>
+                <Text style={styles.brandSubtitle}>FOUNDATION</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1737,14 +1738,15 @@ export function DashboardScreen({ navigation, route }: Props) {
                 <View style={styles.drawerHeaderRow}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
                     <View style={styles.brandBadge}>
-                      <Text style={styles.brandLogoIcon}>⚡</Text>
+                      <Image
+                        source={require("../../assets/ofa-logo.png")}
+                        style={styles.brandLogoImg}
+                        resizeMode="contain"
+                      />
                     </View>
                     <View>
-                      <Text style={styles.brandTitle}>OFA ACADEMY</Text>
-                      <View style={styles.liveIndicatorRow}>
-                        <View style={styles.liveDot} />
-                        <Text style={styles.liveText}>OPERATIONS LIVE</Text>
-                      </View>
+                      <Text style={styles.brandTitle}>OFA SPORTS</Text>
+                      <Text style={styles.brandSubtitle}>FOUNDATION</Text>
                     </View>
                   </View>
                   <TouchableOpacity
@@ -4033,15 +4035,15 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     flexDirection: "row",
-    backgroundColor: "#0A0E17",
+    backgroundColor: "#09090B",
   },
 
   // Sidebar Ribbon Styles
   sidebarContainer: {
     width: 240,
-    backgroundColor: "#0F1626",
+    backgroundColor: "#000000",
     borderRightWidth: 1,
-    borderRightColor: "#1B273E",
+    borderRightColor: "#27272A",
     paddingVertical: 10,
     paddingHorizontal: 8,
     justifyContent: "space-between",
@@ -4059,19 +4061,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 8,
     paddingHorizontal: 2,
-    backgroundColor: "#17233B",
+    backgroundColor: "#18181B",
     borderRadius: 8,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#253759",
+    borderColor: "#27272A",
   },
   railExpanderIcon: {
-    color: "#38BDF8",
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "900",
   },
   railExpanderLabel: {
-    color: "#94A3B8",
+    color: "#A1A1AA",
     fontSize: 8,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -4084,16 +4086,16 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     flexDirection: "row",
-    backgroundColor: "rgba(0,0,0,0.65)",
+    backgroundColor: "rgba(0,0,0,0.75)",
     zIndex: 9999,
     elevation: 50,
   },
   drawerPanel: {
     width: 275,
     height: "100%",
-    backgroundColor: "#0F1626",
+    backgroundColor: "#000000",
     borderRightWidth: 1,
-    borderRightColor: "#1B273E",
+    borderRightColor: "#27272A",
     paddingVertical: 14,
     paddingHorizontal: 12,
     justifyContent: "space-between",
@@ -4107,16 +4109,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#1A253A",
+    borderBottomColor: "#27272A",
   },
   drawerCloseBtn: {
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: "#1A253A",
+    backgroundColor: "#18181B",
+    borderWidth: 1,
+    borderColor: "#27272A",
   },
   drawerCloseText: {
-    color: "#94A3B8",
+    color: "#FFFFFF",
     fontSize: 11,
     fontWeight: "700",
   },
@@ -4128,15 +4132,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#1A253A",
+    borderBottomColor: "#27272A",
   },
   brandBadge: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 8,
-    backgroundColor: "#1D4ED8",
+    backgroundColor: "#000000",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  brandLogoImg: {
+    width: 30,
+    height: 30,
   },
   brandLogoIcon: {
     color: "#FFFFFF",
@@ -4147,10 +4158,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   brandTitle: {
-    color: "#F1F5F9",
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+  },
+  brandSubtitle: {
+    color: "#A1A1AA",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginTop: 1,
   },
   liveIndicatorRow: {
     flexDirection: "row",
@@ -4165,7 +4183,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#10B981",
   },
   liveText: {
-    color: "#64748B",
+    color: "#A1A1AA",
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.5,
@@ -4175,18 +4193,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#141D30",
+    backgroundColor: "#18181B",
     borderRadius: 10,
     padding: 8,
     marginVertical: 10,
     borderWidth: 1,
-    borderColor: "#1E2C44",
+    borderColor: "#27272A",
   },
   userAvatar: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "#3B82F6",
+    backgroundColor: "#000000",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -4214,7 +4234,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   navSectionHeading: {
-    color: "#64748B",
+    color: "#71717A",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.8,
@@ -4232,9 +4252,9 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   navItemBtnActive: {
-    backgroundColor: "#1E2B45",
+    backgroundColor: "#18181B",
     borderLeftWidth: 3,
-    borderLeftColor: "#3B82F6",
+    borderLeftColor: "#FFFFFF",
   },
   navItemBtnCollapsed: {
     justifyContent: "center",
@@ -4260,38 +4280,38 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   navBadge: {
-    backgroundColor: "#1C273D",
+    backgroundColor: "#18181B",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
   },
   navBadgeActive: {
-    backgroundColor: "#2563EB",
+    backgroundColor: "#FFFFFF",
   },
   navBadgeText: {
-    color: "#64748B",
+    color: "#71717A",
     fontSize: 10,
     fontWeight: "700",
   },
   navBadgeTextActive: {
-    color: "#FFFFFF",
+    color: "#000000",
   },
 
   chatNavSeparator: {
     height: 1,
-    backgroundColor: "#1E2C44",
+    backgroundColor: "#27272A",
     marginVertical: 10,
   },
   chatNavBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#13233D",
+    backgroundColor: "#18181B",
     paddingVertical: 9,
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#1E3A66",
+    borderColor: "#27272A",
   },
   chatNavBtnCollapsed: {
     justifyContent: "center",
@@ -4299,12 +4319,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   chatNavLabel: {
-    color: "#60A5FA",
+    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "700",
   },
   chatNavSubLabel: {
-    color: "#64748B",
+    color: "#A1A1AA",
     fontSize: 9,
     fontWeight: "600",
   },
@@ -4312,17 +4332,19 @@ const styles = StyleSheet.create({
   sidebarFooter: {
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#1A253A",
+    borderTopColor: "#27272A",
     gap: 6,
   },
   collapseToggleBtn: {
     paddingVertical: 6,
     alignItems: "center",
     borderRadius: 6,
-    backgroundColor: "#131D2F",
+    backgroundColor: "#18181B",
+    borderWidth: 1,
+    borderColor: "#27272A",
   },
   collapseToggleText: {
-    color: "#64748B",
+    color: "#A1A1AA",
     fontSize: 11,
     fontWeight: "600",
   },
@@ -4351,7 +4373,7 @@ const styles = StyleSheet.create({
   // Main Stage Styles
   mainStage: {
     flex: 1,
-    backgroundColor: "#0A0E17",
+    backgroundColor: "#09090B",
   },
   topStageBar: {
     flexDirection: "row",
@@ -4360,8 +4382,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#1A253A",
-    backgroundColor: "#0D1322",
+    borderBottomColor: "#27272A",
+    backgroundColor: "#000000",
   },
   topBarLeft: {
     flex: 1,
@@ -4378,7 +4400,9 @@ const styles = StyleSheet.create({
   hamburgerBtn: {
     padding: 6,
     borderRadius: 6,
-    backgroundColor: "#172238",
+    backgroundColor: "#18181B",
+    borderWidth: 1,
+    borderColor: "#27272A",
   },
   hamburgerIcon: {
     color: "#FFFFFF",
@@ -4391,7 +4415,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   stageSubtitle: {
-    color: "#64748B",
+    color: "#A1A1AA",
     fontSize: 11,
     marginTop: 2,
   },
@@ -4404,24 +4428,24 @@ const styles = StyleSheet.create({
   refreshIconBtn: {
     padding: 6,
     borderRadius: 8,
-    backgroundColor: "#162238",
+    backgroundColor: "#18181B",
     borderWidth: 1,
-    borderColor: "#243552",
+    borderColor: "#27272A",
   },
   refreshIconText: {
     fontSize: 13,
   },
   primaryActionBtn: {
-    backgroundColor: "#16A34A",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 8,
     flexShrink: 0,
   },
   primaryActionBtnText: {
-    color: "#FFFFFF",
+    color: "#000000",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
   },
 
   stageScroll: {
